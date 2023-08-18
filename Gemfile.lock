@@ -1,0 +1,22 @@
+PATH
+  remote: .
+  specs:
+    pf2 (0.1.0)
+      rake-compiler
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    rake (13.0.6)
+    rake-compiler (1.2.5)
+      rake
+
+PLATFORMS
+  x86_64-linux
+
+DEPENDENCIES
+  pf2!
+  rake (~> 13.0)
+
+BUNDLED WITH
+   2.4.19
