@@ -144,7 +144,7 @@ pf2_record(struct pf2_buffer_t *buffer)
         assert(!NIL_P(thread_results));
 
         // The actual querying
-        int stack_depth = rb_thread_profile_frames(thread, 0, MAX_BUFFER_SIZE, buffer->framebuffer, buffer->linebuffer);
+        int stack_depth = rb_profile_thread_frames(thread, 0, MAX_BUFFER_SIZE, buffer->framebuffer, buffer->linebuffer);
 
         // TODO: Reimplement Pf2-internal data structures without CRuby
         // (which will allow us to release the GVL at this point)
