@@ -131,7 +131,7 @@ pf2_record(struct pf2_buffer_t *buffer)
     VALUE results = rb_iv_get(rb_mPf2, "@results");
 
     // Iterate over all Threads
-    VALUE threads = rb_funcall(rb_cThread, rb_intern("list"), 0);
+    VALUE threads = rb_iv_get(rb_mPf2, "@@threads");
     for (int i = 0; i < RARRAY_LEN(threads); i++) {
         VALUE thread = rb_ary_entry(threads, i);
         VALUE thread_status = rb_funcall(thread, rb_intern("status"), 0);
