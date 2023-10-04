@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <sys/syscall.h>
+
 #include <ruby.h>
 #include <ruby/debug.h>
 #include <ruby/thread.h>
@@ -16,6 +18,12 @@ struct pf2_buffer_t {
     int linebuffer[MAX_BUFFER_SIZE];
 };
 
+struct gvl_record {
+    pid_t thread_id; // native_thread_id
+    int event_type; // -1: unknown, 0: waiting, 1: resumed
+    unsigned long long time_ns; // nanoseconds passed since the profiler started
+};
+
 // Ruby functions
 void Init_pf2(void);
 VALUE rb_start(VALUE self, VALUE debug);
@@ -25,6 +33,8 @@ static void pf2_start(void);
 static void pf2_stop(void);
 static void pf2_signal_handler(int signo);
 static void pf2_postponed_job(void *_);
+static void pf2_gvl_hook_register();
+static void pf2_gvl_event_handler(rb_event_flag_t event, const rb_internal_thread_event_data_t *_, void *__);
 
 static void pf2_record(struct pf2_buffer_t *buffer);
 static VALUE find_or_create_thread_results(VALUE results, pid_t thread_id);
@@ -35,6 +45,11 @@ struct pf2_buffer_t buffer;
 struct timespec initial_time;
 // Debug print?
 bool _debug = false;
+
+rb_internal_thread_event_hook_t *gvl_hook = NULL;
+
+struct gvl_record gvl_records[30000];
+int gvl_record_cnt = 0;
 
 void
 Init_pf2(void)
@@ -98,13 +113,43 @@ pf2_start(void)
     if (setitimer(ITIMER_REAL, &timer, NULL) == -1) {
         rb_syserr_fail(errno, "Failed to configure profiling timer");
     };
+
+    // Register GVL event hook
+    pf2_gvl_hook_register();
 }
 
 static void
 pf2_stop(void)
 {
-    struct itimerval timer = { 0 }; // stop
+    // Stop timer
+    struct itimerval timer = { 0 };
     setitimer(ITIMER_REAL, &timer, NULL);
+    // Remove GVL event hook
+    rb_internal_thread_remove_event_hook(gvl_hook);
+
+    // Append GVL timing information to per-Thread results
+    VALUE rb_mPf2 = rb_const_get(rb_cObject, rb_intern("Pf2"));
+    VALUE results = rb_iv_get(rb_mPf2, "@results");
+    for (int i = 0; i < gvl_record_cnt; i++) {
+        struct gvl_record gr = gvl_records[i];
+
+        VALUE thread_results = find_or_create_thread_results(results, gr.thread_id);
+        VALUE gvl_timings = rb_hash_aref(thread_results, ID2SYM(rb_intern_const("gvl_timings")));
+
+        VALUE gvl_record = rb_hash_new();
+        VALUE record_type;
+        if (gr.event_type == 0) {
+            record_type = ID2SYM(rb_intern_const("waiting"));
+        } else if (gr.event_type == 1) {
+            record_type = ID2SYM(rb_intern_const("resumed"));
+        } else {
+            record_type = ID2SYM(rb_intern_const("unknown"));
+        }
+        rb_hash_aset(gvl_record, ID2SYM(rb_intern_const("type")), record_type);
+        rb_hash_aset(gvl_record, ID2SYM(rb_intern_const("time")), ULL2NUM(gr.time_ns));
+
+        rb_ary_push(gvl_timings, gvl_record);
+    }
 }
 
 // async-signal-safe
@@ -118,6 +163,49 @@ static void
 pf2_postponed_job(void *_) {
     pf2_record(&buffer);
 };
+
+static void
+pf2_gvl_hook_register(void)
+{
+    gvl_hook = rb_internal_thread_add_event_hook(
+        pf2_gvl_event_handler,
+        (
+            RUBY_INTERNAL_THREAD_EVENT_READY |
+            RUBY_INTERNAL_THREAD_EVENT_RESUMED
+        ),
+        NULL
+    );
+}
+
+static void
+pf2_gvl_event_handler(rb_event_flag_t event, const rb_internal_thread_event_data_t *_, void *__)
+{
+    if (gvl_record_cnt >= 29999) { return; }
+
+    // get the current time
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    pid_t current_thread_id = (pid_t)syscall(SYS_gettid);
+
+    int event_type;
+    if (event == RUBY_INTERNAL_THREAD_EVENT_READY) {
+        event_type = 0;
+    } else if (event == RUBY_INTERNAL_THREAD_EVENT_RESUMED) {
+        event_type = 1;
+    } else {
+        event_type = -1;
+    }
+
+    unsigned long long nsec = (ts.tv_sec - initial_time.tv_sec) * 1000000000 + ts.tv_nsec - initial_time.tv_nsec;
+
+    struct gvl_record gr;
+    gr.thread_id = current_thread_id;
+    gr.event_type = event_type;
+    gr.time_ns = nsec;
+
+    gvl_records[gvl_record_cnt++] = gr;
+}
 
 // Buffer structure
 static void
