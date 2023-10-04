@@ -1,0 +1,4 @@
+#!/usr/bin/env ruby
+
+require 'pf2/cli'
+exit Pf2::CLI.run(ARGV)
