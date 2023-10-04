@@ -27,7 +27,7 @@ static void pf2_signal_handler(int signo);
 static void pf2_postponed_job(void *_);
 
 static void pf2_record(struct pf2_buffer_t *buffer);
-static VALUE find_or_create_thread_results(VALUE results, VALUE thread);
+static VALUE find_or_create_thread_results(VALUE results, pid_t thread_id);
 
 // Buffer to record rb_profile_frames() results
 struct pf2_buffer_t buffer;
@@ -140,7 +140,8 @@ pf2_record(struct pf2_buffer_t *buffer)
             continue;
         }
 
-        VALUE thread_results = find_or_create_thread_results(results, thread);
+        pid_t thread_id = NUM2INT(rb_funcall(thread, rb_intern("native_thread_id"), 0));
+        VALUE thread_results = find_or_create_thread_results(results, thread_id);
         assert(!NIL_P(thread_results));
 
         // The actual querying
@@ -211,14 +212,12 @@ pf2_record(struct pf2_buffer_t *buffer)
 }
 
 static VALUE
-find_or_create_thread_results(VALUE results, VALUE thread) {
+find_or_create_thread_results(VALUE results, pid_t thread_id) {
     assert(!NIL_P(results));
     assert(!NIL_P(thread));
 
-    VALUE thread_id = rb_funcall(thread, rb_intern("native_thread_id"), 0);
-
     VALUE threads = rb_hash_aref(results, ID2SYM(rb_intern_const("threads")));
-    VALUE thread_results = rb_hash_aref(threads, thread_id);
+    VALUE thread_results = rb_hash_aref(threads, INT2NUM(thread_id));
     if (NIL_P(thread_results)) {
         /**
          * {
@@ -232,15 +231,16 @@ find_or_create_thread_results(VALUE results, VALUE thread) {
          * }
          */
         thread_results = rb_hash_new();
-        rb_hash_aset(thread_results, ID2SYM(rb_intern_const("thread_id")), thread_id);
+        rb_hash_aset(thread_results, ID2SYM(rb_intern_const("thread_id")), INT2NUM(thread_id));
 
         rb_hash_aset(thread_results, ID2SYM(rb_intern_const("frames")), rb_hash_new());
         VALUE stack_tree = rb_hash_aset(thread_results, ID2SYM(rb_intern_const("stack_tree")), rb_hash_new());
         rb_hash_aset(stack_tree, ID2SYM(rb_intern_const("node_id")), ID2SYM(rb_intern_const("root")));
         rb_hash_aset(stack_tree, ID2SYM(rb_intern_const("children")), rb_hash_new());
         rb_hash_aset(thread_results, ID2SYM(rb_intern_const("samples")), rb_ary_new());
+        rb_hash_aset(thread_results, ID2SYM(rb_intern_const("gvl_timings")), rb_ary_new());
 
-        rb_hash_aset(threads, thread_id, thread_results);
+        rb_hash_aset(threads, INT2NUM(thread_id), thread_results);
     }
     return thread_results;
 }
