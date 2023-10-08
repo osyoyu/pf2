@@ -6,31 +6,14 @@
 #include <unistd.h>
 
 #include <sys/syscall.h>
+#include <sys/time.h>
 
 #include <ruby.h>
 #include <ruby/debug.h>
 #include <ruby/thread.h>
 
-#define MAX_BUFFER_SIZE 3000
+#include "sampler.h"
 
-struct pf2_buffer_t {
-    VALUE framebuffer[MAX_BUFFER_SIZE];
-    int linebuffer[MAX_BUFFER_SIZE];
-};
-
-struct gvl_record {
-    pid_t thread_id; // native_thread_id
-    int event_type; // -1: unknown, 0: waiting, 1: resumed
-    unsigned long long time_ns; // nanoseconds passed since the profiler started
-};
-
-// Ruby functions
-void Init_pf2(void);
-VALUE rb_start(VALUE self, VALUE debug);
-VALUE rb_stop(VALUE self);
-
-static void pf2_start(void);
-static void pf2_stop(void);
 static void pf2_signal_handler(int signo);
 static void pf2_postponed_job(void *_);
 static void pf2_gvl_hook_register();
@@ -43,8 +26,6 @@ static VALUE find_or_create_thread_results(VALUE results, pid_t thread_id);
 struct pf2_buffer_t buffer;
 // The time when the profiler started
 struct timespec initial_time;
-// Debug print?
-bool _debug = false;
 
 rb_internal_thread_event_hook_t *gvl_hook = NULL;
 
@@ -52,50 +33,6 @@ struct gvl_record gvl_records[30000];
 int gvl_record_cnt = 0;
 
 void
-Init_pf2(void)
-{
-    VALUE rb_mPf2 = rb_define_module("Pf2");
-    rb_define_module_function(rb_mPf2, "start", rb_start, 1);
-    rb_define_module_function(rb_mPf2, "stop", rb_stop, 0);
-}
-
-VALUE
-rb_start(VALUE self, VALUE debug) {
-    _debug = RTEST(debug);
-
-    /**
-     * {
-     *   sequence: 0,
-     *   threads: {},
-     * }
-     */
-    VALUE results = rb_hash_new();
-    rb_hash_aset(results, ID2SYM(rb_intern_const("sequence")), INT2FIX(0));
-    rb_hash_aset(results, ID2SYM(rb_intern_const("threads")), rb_hash_new());
-
-    rb_iv_set(self, "@results", results);
-
-    pf2_start();
-
-    if (_debug) {
-        rb_funcall(rb_mKernel, rb_intern("puts"), 1, rb_str_new_cstr("[debug] Pf2 started"));
-    }
-
-    return results;
-}
-
-VALUE
-rb_stop(VALUE self) {
-    pf2_stop();
-
-    if (_debug) {
-        rb_funcall(rb_mKernel, rb_intern("puts"), 1, rb_str_new_cstr("[debug] Pf2 stopped"));
-    }
-
-    return rb_iv_get(self, "@results");
-}
-
-static void
 pf2_start(void)
 {
     clock_gettime(CLOCK_MONOTONIC, &initial_time);
@@ -118,7 +55,7 @@ pf2_start(void)
     pf2_gvl_hook_register();
 }
 
-static void
+void
 pf2_stop(void)
 {
     // Stop timer
