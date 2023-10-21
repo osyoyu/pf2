@@ -2,5 +2,7 @@
 /doc/
 /pkg/
 /tmp/
-
-/lib/pf2/pf2.so
+*.a
+*.bundle
+*.o
+*.so
