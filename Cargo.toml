@@ -1,0 +1,3 @@
+[workspace]
+members = ["./ext/pf2"]
+resolver = "2"

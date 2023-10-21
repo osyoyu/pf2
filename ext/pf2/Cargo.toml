@@ -1,0 +1,15 @@
+[package]
+name = "pf2"
+version = "0.1.0"
+edition = "2021"
+authors = ["Daisuke Aritomo <osyoyu@osyoyu.com>"]
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rb-sys = { version = "0.9.82", features = ["stable-api", "stable-api-compiled-testing"] } # using stable-api-compiled-testing for generating bindings from Ruby source
+serde = "1.0.189"
+serde_derive = "1.0.189"
+serde_json = "1.0.107"
