@@ -65,7 +65,7 @@ pf2_stop(void)
     rb_internal_thread_remove_event_hook(gvl_hook);
 
     // Append GVL timing information to per-Thread results
-    VALUE rb_mPf2 = rb_const_get(rb_cObject, rb_intern("Pf2"));
+    VALUE rb_mPf2 = rb_const_get(rb_cObject, rb_intern_const("Pf2"));
     VALUE results = rb_iv_get(rb_mPf2, "@results");
     for (int i = 0; i < gvl_record_cnt; i++) {
         struct gvl_record gr = gvl_records[i];
@@ -152,20 +152,20 @@ pf2_record(struct pf2_buffer_t *buffer)
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
-    VALUE rb_mPf2 = rb_const_get(rb_cObject, rb_intern("Pf2"));
+    VALUE rb_mPf2 = rb_const_get(rb_cObject, rb_intern_const("Pf2"));
     VALUE results = rb_iv_get(rb_mPf2, "@results");
 
     // Iterate over all Threads
     VALUE threads = rb_iv_get(rb_mPf2, "@@threads");
     for (int i = 0; i < RARRAY_LEN(threads); i++) {
         VALUE thread = rb_ary_entry(threads, i);
-        VALUE thread_status = rb_funcall(thread, rb_intern("status"), 0);
+        VALUE thread_status = rb_funcall(thread, rb_intern_const("status"), 0);
         if (NIL_P(thread) || thread_status == Qfalse) {
             // Thread is dead, just ignore
             continue;
         }
 
-        pid_t thread_id = NUM2INT(rb_funcall(thread, rb_intern("native_thread_id"), 0));
+        pid_t thread_id = NUM2INT(rb_funcall(thread, rb_intern_const("native_thread_id"), 0));
         VALUE thread_results = find_or_create_thread_results(results, thread_id);
         assert(!NIL_P(thread_results));
 
@@ -205,7 +205,7 @@ pf2_record(struct pf2_buffer_t *buffer)
                 VALUE next =
                     rb_funcall(
                         rb_hash_lookup(results, ID2SYM(rb_intern_const("sequence"))),
-                        rb_intern("+"),
+                        rb_intern_const("+"),
                         1,
                         INT2FIX(1)
                     );
