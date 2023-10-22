@@ -13,15 +13,15 @@ module Pf2
     end
 
     def emit
-      x = {
+      report = {
         meta: {
           interval: 10, # ms; TODO: replace with actual interval
           start_time: 0,
           process_type: 0,
           product: 'ruby',
           stackwalk: 0,
-          version: 19,
-          preprocessed_profile_version: 28,
+          version: 28,
+          preprocessed_profile_version: 47,
           symbolicated: true,
           categories: [
             {
@@ -40,12 +40,13 @@ module Pf2
               subcategories: ["Code"],
             },
           ],
+          marker_schema: [],
         },
         libs: [],
         counters: [],
         threads: @profile[:threads].values.map {|th| ThreadReport.new(th).emit }
       }
-      Reporter.deep_camelize_keys(x)
+      Reporter.deep_camelize_keys(report)
     end
 
     class ThreadReport
@@ -83,7 +84,9 @@ module Pf2
           name: "Thread (tid: #{@thread[:thread_id]})",
           is_main_thread: true,
           is_js_tracer: true,
-          pid: 1,
+          # FIXME: We can fill the correct PID only after we correctly fill is_main_thread
+          # (only one thread could be marked as is_main_thread in a single process)
+          pid: @thread[:thread_id],
           tid: @thread[:thread_id],
           samples: samples,
           markers: markers,
@@ -134,6 +137,8 @@ module Pf2
           line: [],
           column: [],
           optimizations: [],
+          inline_depth: [],
+          native_symbol: [],
         }
 
         @thread[:frames].each.with_index do |(id, frame), i|
@@ -146,6 +151,8 @@ module Pf2
           ret[:line] << nil
           ret[:column] << nil
           ret[:optimizations] << nil
+          ret[:inline_depth] << 0
+          ret[:native_symbol] << nil
 
           @frame_id_map[id] = i
         end
@@ -229,6 +236,9 @@ module Pf2
           data: [],
           name: [],
           time: [],
+          start_time: [],
+          end_time: [],
+          phase: [],
           category: [],
           length: 0
         }
@@ -257,4 +267,3 @@ module Pf2
     end
   end
 end
-
