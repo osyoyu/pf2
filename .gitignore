@@ -1,6 +1,7 @@
 /.bundle/
 /doc/
 /pkg/
+/target/
 /tmp/
 *.a
 *.bundle

@@ -27,7 +27,7 @@ module Pf2
       end
       option_parser.parse!(argv)
 
-      profile = Marshal.load(IO.binread(ARGV[0]))
+      profile = JSON.parse(File.read(ARGV[0]), symbolize_names: true)
       report = JSON.generate(Pf2::Reporter.new(profile).emit)
 
       if options[:output_file]

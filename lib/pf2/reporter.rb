@@ -5,7 +5,7 @@ module Pf2
   # https://github.com/firefox-devtools/profiler/blob/main/docs-developer/processed-profile-format.md
   class Reporter
     def initialize(profile)
-      @profile = profile
+      @profile = Reporter.deep_intize_keys(profile)
     end
 
     def inspect
@@ -117,7 +117,7 @@ module Pf2
 
         @thread[:samples].each do |sample|
           ret[:stack] << @stack_tree_id_map[sample[:stack_tree_id]]
-          ret[:time] << sample[:timestamp] / 1000000 # ns -> ms
+          ret[:time] << sample[:elapsed_ns] / 1000000 # ns -> ms
           ret[:duration] << 1
           ret[:event_delay] << 0
         end
@@ -254,14 +254,30 @@ module Pf2
         s.split('_').inject([]) {|buffer, p| buffer.push(buffer.size == 0 ? p : p.capitalize) }.join
       end
 
-      def deep_camelize_keys(value)
+      def deep_transform_keys(value, &block)
         case value
         when Array
-          value.map {|v| deep_camelize_keys(v) }
+          value.map {|v| deep_transform_keys(v, &block) }
         when Hash
-          Hash[value.map {|k, v| [snake_to_camel(k.to_s).to_sym, deep_camelize_keys(v)] }]
+          Hash[value.map {|k, v| [yield(k), deep_transform_keys(v, &block)] }]
         else
           value
+        end
+      end
+
+      def deep_camelize_keys(value)
+        deep_transform_keys(value) do |key|
+          snake_to_camel(key.to_s).to_sym
+        end
+      end
+
+      def deep_intize_keys(value)
+        deep_transform_keys(value) do |key|
+          if key.to_s.to_i.to_s == key.to_s
+            key.to_s.to_i
+          else
+            key
+          end
         end
       end
     end
