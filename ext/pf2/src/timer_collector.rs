@@ -14,41 +14,12 @@ use crate::profile::Profile;
 use crate::sample_collector::Sample;
 use crate::util::*;
 
-unsafe extern "C" fn dmark(ptr: *mut c_void) {
-    unsafe {
-        let collector: Box<TimerCollector> = Box::from_raw(ptr as *mut TimerCollector);
-
-        // Mark collected sample VALUEs
-        {
-            let samples = collector.samples.try_read().unwrap();
-            for sample in samples.iter() {
-                rb_gc_mark(sample.ruby_thread);
-                for frame in sample.frames.iter() {
-                    rb_gc_mark(*frame);
-                }
-            }
-        }
-
-        mem::forget(collector);
-    }
-}
-unsafe extern "C" fn dfree(ptr: *mut c_void) {
-    unsafe {
-        let collector: Box<TimerCollector> = Box::from_raw(ptr as *mut TimerCollector);
-        drop(collector);
-    }
-}
-unsafe extern "C" fn dsize(_: *const c_void) -> size_t {
-    // FIXME: Report something better
-    mem::size_of::<TimerCollector>() as size_t
-}
-
 static mut RBDATA: rb_data_type_t = rb_data_type_t {
     wrap_struct_name: cstr!("TimerCollectorInternal"),
     function: rb_data_type_struct__bindgen_ty_1 {
-        dmark: Some(dmark),
-        dfree: Some(dfree),
-        dsize: Some(dsize),
+        dmark: Some(TimerCollector::dmark),
+        dfree: Some(TimerCollector::dfree),
+        dsize: Some(TimerCollector::dsize),
         dcompact: None,
         reserved: [null_mut(); 1],
     },
@@ -281,6 +252,35 @@ impl TimerCollector {
                 &RBDATA,
             )
         }
+    }
+
+    unsafe extern "C" fn dmark(ptr: *mut c_void) {
+        unsafe {
+            let collector: Box<TimerCollector> = Box::from_raw(ptr as *mut TimerCollector);
+
+            // Mark collected sample VALUEs
+            {
+                let samples = collector.samples.try_read().unwrap();
+                for sample in samples.iter() {
+                    rb_gc_mark(sample.ruby_thread);
+                    for frame in sample.frames.iter() {
+                        rb_gc_mark(*frame);
+                    }
+                }
+            }
+
+            mem::forget(collector);
+        }
+    }
+    unsafe extern "C" fn dfree(ptr: *mut c_void) {
+        unsafe {
+            let collector: Box<TimerCollector> = Box::from_raw(ptr as *mut TimerCollector);
+            drop(collector);
+        }
+    }
+    unsafe extern "C" fn dsize(_: *const c_void) -> size_t {
+        // FIXME: Report something better
+        mem::size_of::<TimerCollector>() as size_t
     }
 
     pub unsafe extern "C" fn rb_alloc(_rbself: VALUE) -> VALUE {
