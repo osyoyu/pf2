@@ -28,7 +28,7 @@ impl ThreadProfile {
             stack_tree: StackTreeNode {
                 children: HashMap::new(),
                 node_id: 0,
-                frame_id: 0,
+                frame_id: "root".to_string(),
             },
             frame_table: HashMap::new(),
             samples: vec![],
@@ -41,7 +41,7 @@ type StackTreeNodeId = i32;
 // Arbitary value which is used inside StackTreeNode.
 // This VALUE should not be dereferenced as a pointer; we're merely using its pointer as a unique value.
 // (Probably should be reconsidered)
-type FrameTableId = VALUE;
+type FrameTableId = String;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct StackTreeNode {
@@ -56,7 +56,17 @@ struct StackTreeNode {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct FrameTableEntry {
+    lineno: i32,
+    // path: String,
+    // absolute_path: String,
+    // label: String,
+    // base_label: String,
     full_label: String,
+    first_lineno: i64,
+    // classpath: String,
+    // singleton_method_p: String,
+    // method_name: Option<String>,
+    // qualified_method_name: Option<String>,
 }
 
 // Represents leaf (末端)
@@ -85,34 +95,104 @@ impl Profile {
                     .entry(sample.ruby_thread_native_thread_id)
                     .or_insert(ThreadProfile::new(sample.ruby_thread_native_thread_id));
 
+                thread_profile.frame_table.insert(
+                    "root_0".to_string(),
+                    FrameTableEntry {
+                        lineno: 0,
+                        full_label: "root".to_string(),
+                        first_lineno: 0,
+                    },
+                );
+
                 // Stack frames, shallow to deep
                 let mut stack_tree = &mut thread_profile.stack_tree;
 
                 let mut it = sample.frames.iter().rev().peekable();
                 while let Some(frame) = it.next() {
                     // Register frame metadata to frame table, if not registered yet
-                    let frame_table_id: FrameTableId = *frame;
+                    let frame_table_id: FrameTableId = format!(
+                        "{iseq}_{lineno}",
+                        iseq = (frame.iseq), // VALUE as u64
+                        lineno = frame.lineno,
+                    );
+                    // unsafe { rb_p(rb_profile_frame_first_lineno(*frame)) };
                     thread_profile
                         .frame_table
-                        .entry(frame_table_id)
+                        .entry(frame_table_id.clone())
                         .or_insert(FrameTableEntry {
+                            lineno: frame.lineno,
+                            // path: CStr::from_ptr(rb_string_value_cstr(&mut rb_profile_frame_path(
+                            //     *frame,
+                            // )))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
+                            // absolute_path: CStr::from_ptr(rb_string_value_cstr(
+                            //     &mut rb_profile_frame_absolute_path(*frame),
+                            // ))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
+                            // label: CStr::from_ptr(rb_string_value_cstr(
+                            //     &mut rb_profile_frame_label(*frame),
+                            // ))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
+                            // base_label: CStr::from_ptr(rb_string_value_cstr(
+                            //     &mut rb_profile_frame_base_label(*frame),
+                            // ))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
                             full_label: CStr::from_ptr(rb_string_value_cstr(
-                                &mut rb_profile_frame_full_label(*frame),
+                                &mut rb_profile_frame_full_label(frame.iseq),
                             ))
                             .to_str()
                             .unwrap()
                             .to_string(),
+                            first_lineno: 0,
+                            // first_lineno: rb_num2int(rb_profile_frame_first_lineno(*frame)),
+                            // classpath: CStr::from_ptr(rb_string_value_cstr(
+                            //     &mut rb_profile_frame_classpath(*frame),
+                            // ))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
+                            // singleton_method_p: CStr::from_ptr(rb_string_value_cstr(
+                            //     &mut rb_profile_frame_singleton_method_p(*frame),
+                            // ))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
+                            // method_name: None,
+                            // method_name: CStr::from_ptr(rb_string_value_cstr(
+                            //     &mut rb_profile_frame_method_name(*frame),
+                            // ))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
+                            // qualified_method_name: None,
+                            // qualified_method_name: CStr::from_ptr(rb_string_value_cstr(
+                            //     &mut rb_profile_frame_qualified_method_name(*frame),
+                            // ))
+                            // .to_str()
+                            // .unwrap()
+                            // .to_string(),
                         });
 
-                    stack_tree = stack_tree.children.entry(frame_table_id).or_insert({
-                        let node = StackTreeNode {
-                            children: HashMap::new(),
-                            node_id: sequence,
-                            frame_id: frame_table_id,
-                        };
-                        sequence += 1;
-                        node
-                    });
+                    stack_tree = stack_tree
+                        .children
+                        .entry(frame_table_id.clone())
+                        .or_insert({
+                            let node = StackTreeNode {
+                                children: HashMap::new(),
+                                node_id: sequence,
+                                frame_id: frame_table_id,
+                            };
+                            sequence += 1;
+                            node
+                        });
 
                     if it.peek().is_none() {
                         // This is the leaf node, record a Sample

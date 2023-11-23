@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use rb_sys::*;
 
 use crate::profile::Profile;
-use crate::sample_collector::Sample;
+use crate::sample_collector::{Sample, SampleFrame};
 use crate::util::*;
 
 static mut RBDATA: rb_data_type_t = rb_data_type_t {
@@ -163,12 +163,16 @@ impl TimerCollector {
         let data = unsafe { Arc::from_raw(ptr) };
 
         unsafe {
-            rb_postponed_job_register_one(
-                0,
-                Some(Self::postponed_job),
-                Arc::into_raw(data) as *mut c_void,
-            );
+            Self::postponed_job(Arc::into_raw(data) as *mut c_void);
         }
+
+        // unsafe {
+        //     rb_postponed_job_register_one(
+        //         0,
+        //         Some(Self::postponed_job),
+        //         Arc::into_raw(data) as *mut c_void,
+        //     );
+        // }
     }
 
     unsafe extern "C" fn postponed_job(data: *mut c_void) {
@@ -176,9 +180,9 @@ impl TimerCollector {
 
         // Collect stack information from specified Ruby Threads
         let mut samples_to_push: Vec<Sample> = vec![];
-        if unsafe { rb_funcall(data.ruby_thread, rb_intern(cstr!("status")), 0) } == Qfalse as u64 {
-            return;
-        }
+        // if unsafe { rb_funcall(data.ruby_thread, rb_intern(cstr!("status")), 0) } == Qfalse as u64 {
+        //     return;
+        // }
 
         let mut buffer: [VALUE; 2000] = [0; 2000];
         let mut linebuffer: [i32; 2000] = [0; 2000];
@@ -200,18 +204,20 @@ impl TimerCollector {
         let mut sample = Sample {
             elapsed_ns: Instant::now().duration_since(data.start_time).as_nanos(),
             ruby_thread: data.ruby_thread,
-            ruby_thread_native_thread_id: unsafe {
-                rb_num2int(rb_funcall(
-                    data.ruby_thread,
-                    rb_intern(cstr!("native_thread_id")),
-                    0,
-                ))
-            },
+            ruby_thread_native_thread_id: 3,
+            // ruby_thread_native_thread_id: unsafe {
+            //     rb_num2int(rb_funcall(
+            //         data.ruby_thread,
+            //         rb_intern(cstr!("native_thread_id")),
+            //         0,
+            //     ))
+            // },
             frames: vec![],
         };
         for i in 0..lines {
-            let frame: VALUE = buffer[i as usize];
-            sample.frames.push(frame);
+            let iseq: VALUE = buffer[i as usize];
+            let lineno: i32 = linebuffer[i as usize];
+            sample.frames.push(SampleFrame { iseq, lineno });
         }
         samples_to_push.push(sample);
 
@@ -264,7 +270,7 @@ impl TimerCollector {
                 for sample in samples.iter() {
                     rb_gc_mark(sample.ruby_thread);
                     for frame in sample.frames.iter() {
-                        rb_gc_mark(*frame);
+                        rb_gc_mark(frame.iseq)
                     }
                 }
             }

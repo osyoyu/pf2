@@ -5,7 +5,7 @@ module Pf2
   # https://github.com/firefox-devtools/profiler/blob/main/docs-developer/processed-profile-format.md
   class Reporter
     def initialize(profile)
-      @profile = Reporter.deep_intize_keys(profile)
+      @profile = profile
     end
 
     def inspect
@@ -148,13 +148,13 @@ module Pf2
           ret[:func] << i # TODO
           ret[:inner_window_id] << nil
           ret[:implementation] << nil
-          ret[:line] << nil
+          ret[:line] << frame[:lineno]
           ret[:column] << nil
           ret[:optimizations] << nil
           ret[:inline_depth] << 0
           ret[:native_symbol] << nil
 
-          @frame_id_map[id] = i
+          @frame_id_map[id.to_s] = i
         end
 
         ret[:length] = ret[:address].length
@@ -173,7 +173,7 @@ module Pf2
         }
 
         @thread[:frames].each.with_index do |(id, frame), i|
-          ret[:name] << string_id(frame[:full_label])
+          ret[:name] << string_id("#{frame[:full_label]} (L#{frame[:lineno]})")
           ret[:is_js] << false
           ret[:relevant_for_js] << false
           ret[:resource] << -1

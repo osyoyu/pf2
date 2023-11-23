@@ -23,7 +23,7 @@ unsafe extern "C" fn dmark(ptr: *mut c_void) {
             for sample in samples.iter() {
                 rb_gc_mark(sample.ruby_thread);
                 for frame in sample.frames.iter() {
-                    rb_gc_mark(*frame);
+                    rb_gc_mark(frame.iseq);
                 }
             }
         }
@@ -76,7 +76,13 @@ pub struct Sample {
     pub elapsed_ns: u128,
     pub ruby_thread: VALUE,
     pub ruby_thread_native_thread_id: i64,
-    pub frames: Vec<VALUE>,
+    pub frames: Vec<SampleFrame>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SampleFrame {
+    pub iseq: VALUE,
+    pub lineno: i32,
 }
 
 impl SampleCollector {
@@ -183,8 +189,9 @@ impl SampleCollector {
                 frames: vec![],
             };
             for i in 0..lines {
-                let frame: VALUE = buffer[i as usize];
-                sample.frames.push(frame);
+                let iseq: VALUE = buffer[i as usize];
+                let lineno: i32 = linebuffer[i as usize];
+                sample.frames.push(SampleFrame { iseq, lineno });
             }
             samples_to_push.push(sample);
         }
