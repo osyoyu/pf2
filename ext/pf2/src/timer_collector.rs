@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use rb_sys::*;
 
 use crate::profile::Profile;
-use crate::sample_collector::Sample;
+use crate::sample_collector::{Sample, SampleFrame};
 use crate::util::*;
 
 static mut RBDATA: rb_data_type_t = rb_data_type_t {
@@ -210,8 +210,9 @@ impl TimerCollector {
             frames: vec![],
         };
         for i in 0..lines {
-            let frame: VALUE = buffer[i as usize];
-            sample.frames.push(frame);
+            let iseq: VALUE = buffer[i as usize];
+            let lineno: i32 = linebuffer[i as usize];
+            sample.frames.push(SampleFrame { iseq, lineno });
         }
         samples_to_push.push(sample);
 
@@ -264,7 +265,7 @@ impl TimerCollector {
                 for sample in samples.iter() {
                     rb_gc_mark(sample.ruby_thread);
                     for frame in sample.frames.iter() {
-                        rb_gc_mark(*frame);
+                        rb_gc_mark(frame.iseq)
                     }
                 }
             }
