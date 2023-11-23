@@ -9,7 +9,7 @@ Gem::Specification.new do |spec|
   spec.summary = 'Yet another Ruby profiler'
   spec.homepage = 'https://github.com/osyoyu/pf2'
   spec.license = 'MIT'
-  spec.required_ruby_version = '>= 3.3.0.dev'
+  spec.required_ruby_version = '>= 3.2.0'
 
   spec.extensions = ['ext/pf2/extconf.rb']
 
