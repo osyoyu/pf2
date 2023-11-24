@@ -138,12 +138,11 @@ impl Profile {
                     };
                     // Register frame metadata to frame table, if not registered yet
                     let frame_table_id: FrameTableId = format!(
-                        "{iseq}_{caller_path}_{caller_lineno}_{path}_{lineno}",
+                        "{iseq}_{caller_path}_{caller_lineno}",
                         iseq = (frame.iseq), // VALUE as u64
                         caller_path = caller_path,
                         caller_lineno = caller_lineno,
-                        path = path2,
-                        lineno = lineno,
+                        // path = path2, lineno = frame.lineno,
                     );
                     thread_profile
                         .frame_table
