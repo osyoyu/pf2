@@ -115,9 +115,9 @@ impl TimerCollector {
         // Configure timer to fire every 50 ms of CPU time
         let mut its: libc::itimerspec = unsafe { mem::zeroed() };
         its.it_interval.tv_sec = 0;
-        its.it_interval.tv_nsec = 10_000_000; // 50 ms
+        its.it_interval.tv_nsec = 10_000_000; // 10 ms
         its.it_value.tv_sec = 0;
-        its.it_value.tv_nsec = 10_000_000;
+        its.it_value.tv_nsec = 10_000_000; // 10 ms
         unsafe {
             let err = libc::timer_settime(*timer_id.as_ptr(), 0, &its, null_mut());
             if err != 0 {

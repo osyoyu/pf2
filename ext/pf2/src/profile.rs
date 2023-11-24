@@ -57,7 +57,7 @@ struct StackTreeNode {
 #[derive(Debug, Deserialize, Serialize)]
 struct FrameTableEntry {
     lineno: i32,
-    // path: String,
+    path: String,
     // absolute_path: String,
     // label: String,
     // base_label: String,
@@ -99,6 +99,7 @@ impl Profile {
                     "root_0".to_string(),
                     FrameTableEntry {
                         lineno: 0,
+                        path: "(none)".to_string(),
                         full_label: "root".to_string(),
                         first_lineno: 0,
                     },
@@ -116,17 +117,22 @@ impl Profile {
                         lineno = frame.lineno,
                     );
                     // unsafe { rb_p(rb_profile_frame_first_lineno(*frame)) };
+                    let mut path: VALUE = rb_profile_frame_path(frame.iseq);
+                    // Qnil
+                    let path_cstr = if path == 4 {
+                        "(unknown)".to_string()
+                    } else {
+                        CStr::from_ptr(rb_string_value_cstr(&mut path))
+                            .to_str()
+                            .unwrap()
+                            .to_string()
+                    };
                     thread_profile
                         .frame_table
                         .entry(frame_table_id.clone())
                         .or_insert(FrameTableEntry {
                             lineno: frame.lineno,
-                            // path: CStr::from_ptr(rb_string_value_cstr(&mut rb_profile_frame_path(
-                            //     *frame,
-                            // )))
-                            // .to_str()
-                            // .unwrap()
-                            // .to_string(),
+                            path: path_cstr,
                             // absolute_path: CStr::from_ptr(rb_string_value_cstr(
                             //     &mut rb_profile_frame_absolute_path(*frame),
                             // ))
