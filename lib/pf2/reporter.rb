@@ -173,12 +173,12 @@ module Pf2
         }
 
         @thread[:frames].each.with_index do |(id, frame), i|
-          ret[:name] << string_id("#{frame[:full_label]} (#{frame[:path]}:#{frame[:lineno]})")
+          ret[:name] << string_id("#{frame[:full_label]} (callee: #{frame[:caller_path]}:#{frame[:caller_lineno]})")
           ret[:is_js] << false
           ret[:relevant_for_js] << false
           ret[:resource] << -1
-          ret[:file_name] << nil
-          ret[:line_number] << nil
+          ret[:file_name] << string_id(frame[:path])
+          ret[:line_number] << string_id(frame[:lineno].to_s)
           ret[:column_number] << nil
 
           @func_id_map[id] = i

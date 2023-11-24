@@ -210,8 +210,8 @@ impl TimerCollector {
             frames: vec![],
         };
         for i in 0..lines {
-            let iseq: VALUE = buffer[i as usize];
-            let lineno: i32 = linebuffer[i as usize];
+            let iseq: VALUE = buffer[i as usize]; // メソッドの情報
+            let lineno: i32 = linebuffer[i as usize]; // メソッドの行数
             sample.frames.push(SampleFrame { iseq, lineno });
         }
         samples_to_push.push(sample);

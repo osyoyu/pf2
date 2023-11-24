@@ -56,7 +56,9 @@ struct StackTreeNode {
 
 #[derive(Debug, Deserialize, Serialize)]
 struct FrameTableEntry {
-    lineno: i32,
+    caller_lineno: i32,
+    caller_path: String,
+    lineno: i64,
     path: String,
     // absolute_path: String,
     // label: String,
@@ -98,8 +100,10 @@ impl Profile {
                 thread_profile.frame_table.insert(
                     "root_0".to_string(),
                     FrameTableEntry {
+                        caller_lineno: 0,
+                        caller_path: "(root)".to_string(),
                         lineno: 0,
-                        path: "(none)".to_string(),
+                        path: "(root)".to_string(),
                         full_label: "root".to_string(),
                         first_lineno: 0,
                     },
@@ -108,18 +112,16 @@ impl Profile {
                 // Stack frames, shallow to deep
                 let mut stack_tree = &mut thread_profile.stack_tree;
 
+                // sample.frames は leaf → root 方向
+                // rev して root → leaf 方向にする
+                let mut caller_path: String = "(root)".to_string();
+                let mut caller_lineno: i32 = 0;
                 let mut it = sample.frames.iter().rev().peekable();
                 while let Some(frame) = it.next() {
-                    // Register frame metadata to frame table, if not registered yet
-                    let frame_table_id: FrameTableId = format!(
-                        "{iseq}_{lineno}",
-                        iseq = (frame.iseq), // VALUE as u64
-                        lineno = frame.lineno,
-                    );
                     // unsafe { rb_p(rb_profile_frame_first_lineno(*frame)) };
                     let mut path: VALUE = rb_profile_frame_path(frame.iseq);
-                    // Qnil
-                    let path_cstr = if path == 4 {
+                    let path2 = if path == 4 {
+                        // Qnil
                         "(unknown)".to_string()
                     } else {
                         CStr::from_ptr(rb_string_value_cstr(&mut path))
@@ -127,12 +129,30 @@ impl Profile {
                             .unwrap()
                             .to_string()
                     };
+                    let first_lineno: VALUE = rb_profile_frame_first_lineno(frame.iseq);
+                    let lineno: i64 = if path == 4 {
+                        // Qnil
+                        0
+                    } else {
+                        rb_num2int(first_lineno)
+                    };
+                    // Register frame metadata to frame table, if not registered yet
+                    let frame_table_id: FrameTableId = format!(
+                        "{iseq}_{caller_path}_{caller_lineno}_{path}_{lineno}",
+                        iseq = (frame.iseq), // VALUE as u64
+                        caller_path = caller_path,
+                        caller_lineno = caller_lineno,
+                        path = path2,
+                        lineno = lineno,
+                    );
                     thread_profile
                         .frame_table
                         .entry(frame_table_id.clone())
                         .or_insert(FrameTableEntry {
-                            lineno: frame.lineno,
-                            path: path_cstr,
+                            caller_lineno,
+                            caller_path,
+                            lineno,
+                            path: path2.clone(),
                             // absolute_path: CStr::from_ptr(rb_string_value_cstr(
                             //     &mut rb_profile_frame_absolute_path(*frame),
                             // ))
@@ -186,6 +206,9 @@ impl Profile {
                             // .unwrap()
                             // .to_string(),
                         });
+
+                    caller_path = path2;
+                    caller_lineno = frame.lineno;
 
                     stack_tree = stack_tree
                         .children
