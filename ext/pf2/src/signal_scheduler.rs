@@ -1,14 +1,12 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 mod configuration;
-mod profile;
-mod sample;
 mod timer_installer;
 
 use self::configuration::{Configuration, TimeMode};
-use self::profile::Profile;
-use self::sample::Sample;
 use self::timer_installer::TimerInstaller;
+use crate::profile::Profile;
+use crate::sample::Sample;
 
 use core::panic;
 use std::collections::HashSet;
