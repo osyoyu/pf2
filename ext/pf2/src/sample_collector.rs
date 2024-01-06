@@ -56,6 +56,7 @@ static mut RBDATA: rb_data_type_t = rb_data_type_t {
     flags: 0,
 };
 
+// TODO: To be renamed to TimerThreadScheduler
 #[derive(Clone, Debug)]
 pub struct SampleCollector {
     start_time: Instant,
