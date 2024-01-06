@@ -11,7 +11,7 @@ use rb_sys::*;
 use crate::signal_scheduler::SignalHandlerArgs;
 
 use super::configuration::Configuration;
-use super::profile::Profile;
+use crate::profile::Profile;
 
 // We could avoid deferring the timer creation by combining pthread_getcpuclockid(3) and timer_create(2) here,
 // but we're not doing so since (1) Ruby does not expose the pthread_self() of a Ruby Thread
