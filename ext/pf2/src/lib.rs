@@ -6,5 +6,6 @@ mod ruby_init;
 
 mod profile;
 mod sample_collector;
+mod signal_scheduler;
 mod timer_collector;
 mod util;
