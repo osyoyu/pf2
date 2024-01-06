@@ -22,5 +22,5 @@ pub fn to_ruby_cfunc2<T, U>(f: unsafe extern "C" fn(T, U) -> VALUE) -> RubyCFunc
 }
 
 extern "C" {
-    pub fn extract_si_value_sival_ptr(info: *mut c_void) -> *mut c_void;
+    pub fn extract_si_value_sival_ptr(info: *mut libc::siginfo_t) -> *mut c_void;
 }

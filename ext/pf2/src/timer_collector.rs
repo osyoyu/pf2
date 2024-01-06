@@ -157,7 +157,7 @@ impl TimerCollector {
         });
     }
 
-    extern "C" fn signal_handler(_sig: c_int, info: *mut c_void, _ucontext: *mut c_void) {
+    extern "C" fn signal_handler(_sig: c_int, info: *mut libc::siginfo_t, _ucontext: *mut c_void) {
         // println!("signal!");
         let ptr = unsafe { extract_si_value_sival_ptr(info) as *mut CollectorThreadData };
         let data = unsafe { Arc::from_raw(ptr) };
