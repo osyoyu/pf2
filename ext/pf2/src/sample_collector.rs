@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use rb_sys::*;
 
-use crate::profile::Profile;
+use crate::profile_serializer::ProfileSerializer;
 use crate::util::*;
 
 unsafe extern "C" fn dmark(ptr: *mut c_void) {
@@ -114,7 +114,7 @@ impl SampleCollector {
     fn stop(&self, _rbself: VALUE) -> VALUE {
         // Stop the collector thread
         self.stop_requested.store(true, Ordering::Relaxed);
-        let profile = Profile::from_samples(&self.samples.try_read().unwrap());
+        let profile = ProfileSerializer::serialize_from_samples(&self.samples.try_read().unwrap());
 
         let json = serde_json::to_string(&profile).unwrap();
         let json_cstring = CString::new(json).unwrap();
