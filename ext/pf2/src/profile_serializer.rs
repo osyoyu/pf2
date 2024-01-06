@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::CStr};
 use rb_sys::*;
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct Profile {
+pub struct ProfileSerializer {
     threads: HashMap<ThreadId, ThreadProfile>,
 }
 
@@ -66,13 +66,16 @@ struct ProfileSample {
     stack_tree_id: StackTreeNodeId,
 }
 
-impl Profile {
+impl ProfileSerializer {
     // Build a profile from collected samples
     // Should be called in a Ruby thread which has acquired the GVL
-    pub fn from_samples(samples: &[crate::sample_collector::Sample]) -> Profile {
+    #[deprecated(note = "to be reimplemented to take &Profile")]
+    pub fn serialize_from_samples(
+        samples: &[crate::sample_collector::Sample],
+    ) -> ProfileSerializer {
         let mut sequence = 1;
 
-        let mut profile = Profile {
+        let mut profile = ProfileSerializer {
             threads: HashMap::new(),
         };
 
