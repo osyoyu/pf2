@@ -2,14 +2,14 @@ use std::{collections::HashMap, ffi::CStr};
 
 use rb_sys::*;
 
+use crate::profile::Profile;
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProfileSerializer {
     threads: HashMap<ThreadId, ThreadProfile>,
 }
 
-// The native thread ID which can be obtained through `Thread#native_thread_id`.
-// May change when MaNy (M:N threads) get stablized.
-type ThreadId = i64;
+type ThreadId = VALUE;
 
 #[derive(Debug, Deserialize, Serialize)]
 struct ThreadProfile {
@@ -67,40 +67,36 @@ struct ProfileSample {
 }
 
 impl ProfileSerializer {
-    // Build a profile from collected samples
-    // Should be called in a Ruby thread which has acquired the GVL
-    #[deprecated(note = "to be reimplemented to take &Profile")]
-    pub fn serialize_from_samples(
-        samples: &[crate::sample_collector::Sample],
-    ) -> ProfileSerializer {
+    pub fn serialize(profile: &Profile) -> String {
         let mut sequence = 1;
 
-        let mut profile = ProfileSerializer {
+        let mut serializer = ProfileSerializer {
             threads: HashMap::new(),
         };
 
         unsafe {
             // Process each sample
-            for sample in samples.iter() {
+            for sample in profile.samples.iter() {
                 // Find the Thread profile for this sample
-                let thread_profile = profile
+                let thread_serializer = serializer
                     .threads
-                    .entry(sample.ruby_thread_native_thread_id)
-                    .or_insert(ThreadProfile::new(sample.ruby_thread_native_thread_id));
+                    .entry(sample.ruby_thread)
+                    .or_insert(ThreadProfile::new(sample.ruby_thread));
 
                 // Stack frames, shallow to deep
-                let mut stack_tree = &mut thread_profile.stack_tree;
+                let mut stack_tree = &mut thread_serializer.stack_tree;
 
-                let mut it = sample.frames.iter().rev().peekable();
-                while let Some(frame) = it.next() {
+                for i in (0..(sample.line_count - 1)).rev() {
+                    let frame = sample.frames[i as usize];
+
                     // Register frame metadata to frame table, if not registered yet
-                    let frame_table_id: FrameTableId = *frame;
-                    thread_profile
+                    let frame_table_id: FrameTableId = frame;
+                    thread_serializer
                         .frame_table
                         .entry(frame_table_id)
                         .or_insert(FrameTableEntry {
                             full_label: CStr::from_ptr(rb_string_value_cstr(
-                                &mut rb_profile_frame_full_label(*frame),
+                                &mut rb_profile_frame_full_label(frame),
                             ))
                             .to_str()
                             .unwrap()
@@ -117,10 +113,11 @@ impl ProfileSerializer {
                         node
                     });
 
-                    if it.peek().is_none() {
+                    if i == 0 {
                         // This is the leaf node, record a Sample
-                        thread_profile.samples.push(ProfileSample {
-                            elapsed_ns: sample.elapsed_ns,
+                        let elapsed_ns = (sample.timestamp - profile.start_timestamp).as_nanos();
+                        thread_serializer.samples.push(ProfileSample {
+                            elapsed_ns,
                             stack_tree_id: stack_tree.node_id,
                         });
                     }
@@ -128,6 +125,6 @@ impl ProfileSerializer {
             }
         }
 
-        profile
+        serde_json::to_string(&serializer).unwrap()
     }
 }

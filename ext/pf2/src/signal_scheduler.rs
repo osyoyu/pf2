@@ -6,11 +6,12 @@ mod timer_installer;
 use self::configuration::{Configuration, TimeMode};
 use self::timer_installer::TimerInstaller;
 use crate::profile::Profile;
+use crate::profile_serializer::ProfileSerializer;
 use crate::sample::Sample;
 
 use core::panic;
 use std::collections::HashSet;
-use std::ffi::{c_int, c_void};
+use std::ffi::{c_int, c_void, CString};
 use std::mem::ManuallyDrop;
 use std::sync::{Arc, RwLock};
 use std::{mem, ptr::null_mut};
@@ -64,21 +65,30 @@ impl SignalScheduler {
 
     fn stop(&mut self, _rbself: VALUE) -> VALUE {
         if let Some(profile) = &self.profile {
-            let mut profile = profile.try_write().unwrap();
-            profile.flush_temporary_sample_buffer();
-            println!("[pf2 DEBUG] Start timestamp: {:?}", profile.start_timestamp);
-            println!(
-                "[pf2 DEBUG] End timestamp: {:?}",
-                profile.samples.last().unwrap().timestamp
-            );
+            // Finalize
+            match profile.try_write() {
+                Ok(mut profile) => {
+                    profile.flush_temporary_sample_buffer();
+                }
+                Err(_) => {
+                    println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
+                    return Qfalse.into();
+                }
+            }
+
+            let profile = profile.try_read().unwrap();
             println!(
                 "[pf2 DEBUG] Elapsed time: {:?}",
                 profile.samples.last().unwrap().timestamp - profile.start_timestamp
             );
             println!("[pf2 DEBUG] Number of samples: {}", profile.samples.len());
-        }
 
-        Qtrue.into()
+            let serialized = ProfileSerializer::serialize(&profile);
+            let serialized = CString::new(serialized).unwrap();
+            unsafe { rb_str_new_cstr(serialized.as_ptr()) }
+        } else {
+            panic!("stop() called before start()");
+        }
     }
 
     // Install signal handler for profiling events to the current process.
