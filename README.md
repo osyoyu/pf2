@@ -1,26 +1,75 @@
-# Pf2
+Pf2
+===========
 
-A sampling-based profiler for Ruby.
-Works only on a patched version of CRuby (MRI) at the moment.
+A experimental sampling-based profiler for Ruby 3.3+.
 
-## Installation
+Notable Capabilites
+--------
 
-TBD
+- Can accurately track multiple Ruby Threads' activity
+- Sampling interval can be set based on per-Thread CPU usage
 
-## Usage
+Usage
+--------
 
-TBD
+### Profiling
 
-## Development
+Pf2 will collect samples every 10 ms of wall time by default.
 
-After checking out the repo, run `bin/setup` to install dependencies. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+```ruby
+profiler = Pf2::Profiler.new([Thread.current])
+profiler.start
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+# your code goes here
 
-## Contributing
+profile = profiler.stop
+File.write("my_program.pf2profile", profile)
+```
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/osyoyu/pf2.
+### Reporting / Visualization
 
-## License
+Profiles can be visualized using the [Firefox Profiler](https://profiler.firefox.com/).
+
+```console
+$ pf2 -o report.json my_program.pf2profile
+```
+
+### Configuration
+
+(TBD)
+
+Overhead
+--------
+
+While Pf2 aims to be non-disturbulent as much as possible, a small overhead still is incured.
+
+(TBD)
+
+Limitations
+--------
+
+Pf2 cannot properly track program activity in some known cases. I'm working to remove these limtations, so stay tuned.
+
+- Program execution in forked processes
+  - Workarounds available for Puma
+- Program execution in Fibers
+- Program execution when MaNy (`RUBY_MN_THREADS`) is enabled
+
+Internals
+--------
+
+(TBD)
+
+
+Future Plans
+--------
+
+- Remove known limitations, if possible
+- Implement a "tracing" scheduler, using the C TracePoint API
+- more
+
+
+License
+--------
 
 The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
