@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use rb_sys::*;
+
 use super::sample::Sample;
 
 const TEMPORARY_SAMPLE_BUFFER_CAPACITY: usize = 100000;
@@ -29,6 +31,18 @@ impl Profile {
                 .push(self.temporary_sample_buffer.buffer[i].take().unwrap());
         }
         self.temporary_sample_buffer.index = 0;
+    }
+
+    pub unsafe fn dmark(&self) {
+        self.samples.iter().for_each(|sample| {
+            sample.dmark();
+        });
+        for i in 0..self.temporary_sample_buffer.index {
+            self.temporary_sample_buffer.buffer[i]
+                .as_ref()
+                .unwrap()
+                .dmark();
+        }
     }
 }
 

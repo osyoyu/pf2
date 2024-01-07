@@ -33,4 +33,11 @@ impl Sample {
         };
         sample
     }
+
+    pub unsafe fn dmark(&self) {
+        rb_gc_mark(self.ruby_thread);
+        for frame in self.frames.iter() {
+            rb_gc_mark(*frame);
+        }
+    }
 }

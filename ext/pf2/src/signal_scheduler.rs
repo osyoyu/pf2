@@ -166,12 +166,7 @@ impl SignalScheduler {
             if let Some(profile) = &collector.profile {
                 match profile.try_read() {
                     Ok(profile) => {
-                        profile.samples.iter().for_each(|sample| {
-                            rb_gc_mark(sample.ruby_thread);
-                            for frame in sample.frames.iter() {
-                                rb_gc_mark(*frame);
-                            }
-                        });
+                        profile.dmark();
                     }
                     Err(_) => {
                         panic!("[pf2 FATAL] dmark: Failed to acquire profile lock.");
