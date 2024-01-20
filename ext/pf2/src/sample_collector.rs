@@ -129,6 +129,8 @@ impl SampleCollector {
             unsafe {
                 // FIXME: data_for_job has a high chance of leaking memory here,
                 // as rb_postponed_job_register_one does not invoke postponed_job().
+                // FIXME: Migrate to the new Postponed Job API
+                #[allow(deprecated)]
                 rb_postponed_job_register_one(
                     0,
                     Some(Self::postponed_job),
