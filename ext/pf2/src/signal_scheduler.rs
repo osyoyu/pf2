@@ -126,7 +126,9 @@ impl SignalScheduler {
         };
 
         let sample = Sample::capture(args.context_ruby_thread); // NOT async-signal-safe
-        profile.temporary_sample_buffer.push(sample);
+        if profile.temporary_sample_buffer.push(sample).is_err() {
+            panic!("[pf2 DEBUG] Temporary sample buffer full. Dropping sample.");
+        }
     }
 
     // Ruby Methods

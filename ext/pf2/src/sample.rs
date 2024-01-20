@@ -4,7 +4,7 @@ use rb_sys::*;
 
 const MAX_STACK_DEPTH: usize = 500;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Sample {
     pub ruby_thread: VALUE,
     pub timestamp: Instant,

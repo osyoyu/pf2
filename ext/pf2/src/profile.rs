@@ -2,15 +2,14 @@ use std::time::Instant;
 
 use rb_sys::*;
 
+use super::ringbuffer::Ringbuffer;
 use super::sample::Sample;
-
-const TEMPORARY_SAMPLE_BUFFER_CAPACITY: usize = 100000;
 
 #[derive(Debug)]
 pub struct Profile {
     pub start_timestamp: Instant,
     pub samples: Vec<Sample>,
-    pub temporary_sample_buffer: TemporarySampleBuffer,
+    pub temporary_sample_buffer: Ringbuffer,
 }
 
 impl Profile {
@@ -18,47 +17,20 @@ impl Profile {
         Self {
             start_timestamp: Instant::now(),
             samples: vec![],
-            temporary_sample_buffer: TemporarySampleBuffer {
-                buffer: unsafe { std::mem::zeroed() },
-                index: 0,
-            },
+            temporary_sample_buffer: Ringbuffer::new(10000),
         }
     }
 
     pub fn flush_temporary_sample_buffer(&mut self) {
-        for i in 0..self.temporary_sample_buffer.index {
-            self.samples
-                .push(self.temporary_sample_buffer.buffer[i].take().unwrap());
+        while let Some(sample) = self.temporary_sample_buffer.pop() {
+            self.samples.push(sample);
         }
-        self.temporary_sample_buffer.index = 0;
     }
 
     pub unsafe fn dmark(&self) {
         self.samples.iter().for_each(|sample| {
             sample.dmark();
         });
-        for i in 0..self.temporary_sample_buffer.index {
-            self.temporary_sample_buffer.buffer[i]
-                .as_ref()
-                .unwrap()
-                .dmark();
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct TemporarySampleBuffer {
-    buffer: [Option<Sample>; TEMPORARY_SAMPLE_BUFFER_CAPACITY],
-    index: usize,
-}
-
-impl TemporarySampleBuffer {
-    // async-signal-safe
-    pub fn push(&mut self, sample: Sample) {
-        if self.index == TEMPORARY_SAMPLE_BUFFER_CAPACITY {
-            panic!("TemporarySampleBuffer is full");
-        }
-        self.buffer[self.index] = Some(sample);
-        self.index += 1;
+        self.temporary_sample_buffer.dmark();
     }
 }
