@@ -2,13 +2,15 @@ use std::time::Instant;
 
 use rb_sys::*;
 
+const MAX_STACK_DEPTH: usize = 500;
+
 #[derive(Debug)]
 pub struct Sample {
     pub ruby_thread: VALUE,
     pub timestamp: Instant,
     pub line_count: i32,
-    pub frames: [VALUE; 2000],
-    pub linenos: [i32; 2000],
+    pub frames: [VALUE; MAX_STACK_DEPTH],
+    pub linenos: [i32; MAX_STACK_DEPTH],
 }
 
 impl Sample {
@@ -19,8 +21,8 @@ impl Sample {
             ruby_thread,
             timestamp: Instant::now(),
             line_count: 0,
-            frames: [0; 2000],
-            linenos: [0; 2000],
+            frames: [0; MAX_STACK_DEPTH],
+            linenos: [0; MAX_STACK_DEPTH],
         };
         unsafe {
             sample.line_count = rb_profile_thread_frames(
