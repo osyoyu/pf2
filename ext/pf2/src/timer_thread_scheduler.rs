@@ -1,46 +1,37 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::ffi::{c_int, c_void};
-use std::mem::{self, ManuallyDrop};
+use std::ffi::c_void;
+use std::mem::ManuallyDrop;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rb_sys::*;
 
+use crate::profile::Profile;
+use crate::sample::Sample;
 use crate::util::*;
 
 #[derive(Clone, Debug)]
 pub struct TimerThreadScheduler {
-    start_time: Instant,
     ruby_threads: Arc<RwLock<Vec<VALUE>>>,
-    samples: Arc<RwLock<Vec<Sample>>>,
+    profile: Option<Arc<RwLock<Profile>>>,
     stop_requested: Arc<AtomicBool>,
 }
 
 #[derive(Debug)]
-struct CollectorThreadData {
-    start_time: Instant,
+struct PostponedJobArgs {
     ruby_threads: Arc<RwLock<Vec<VALUE>>>,
-    samples: Arc<RwLock<Vec<Sample>>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Sample {
-    pub elapsed_ns: u128,
-    pub ruby_thread: VALUE,
-    pub ruby_thread_native_thread_id: i64,
-    pub frames: Vec<VALUE>,
+    profile: Arc<RwLock<Profile>>,
 }
 
 impl TimerThreadScheduler {
     fn new() -> Self {
         TimerThreadScheduler {
-            start_time: Instant::now(),
             ruby_threads: Arc::new(RwLock::new(vec![])),
-            samples: Arc::new(RwLock::new(vec![])),
+            profile: None,
             stop_requested: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -54,14 +45,19 @@ impl TimerThreadScheduler {
             }
         }
 
+        // Create Profile
+        let profile = Arc::new(RwLock::new(Profile::new()));
+        self.start_profile_buffer_flusher_thread(&profile);
+
         // Start monitoring thread
         let stop_requested = Arc::clone(&self.stop_requested);
-        let data_for_job: Arc<CollectorThreadData> = Arc::new(CollectorThreadData {
-            start_time: self.start_time,
+        let data_for_job: Arc<PostponedJobArgs> = Arc::new(PostponedJobArgs {
             ruby_threads: Arc::clone(&self.ruby_threads),
-            samples: Arc::clone(&self.samples),
+            profile: Arc::clone(&profile),
         });
         thread::spawn(move || Self::thread_main_loop(stop_requested, data_for_job));
+
+        self.profile = Some(profile);
 
         Qtrue.into()
     }
@@ -70,12 +66,34 @@ impl TimerThreadScheduler {
         // Stop the collector thread
         self.stop_requested.store(true, Ordering::Relaxed);
 
-        // TODO: Return the profile in a serialized format
+        if let Some(profile) = &self.profile {
+            // Finalize
+            match profile.try_write() {
+                Ok(mut profile) => {
+                    profile.flush_temporary_sample_buffer();
+                }
+                Err(_) => {
+                    println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
+                    return Qfalse.into();
+                }
+            }
+
+            let profile = profile.try_read().unwrap();
+            println!(
+                "[pf2 DEBUG] Elapsed time: {:?}",
+                profile.samples.last().unwrap().timestamp - profile.start_timestamp
+            );
+            println!("[pf2 DEBUG] Number of samples: {}", profile.samples.len());
+
+            // TODO: Return the profile in a serialized format
+        } else {
+            panic!("stop() called before start()");
+        }
 
         Qtrue.into()
     }
 
-    fn thread_main_loop(stop_requested: Arc<AtomicBool>, data_for_job: Arc<CollectorThreadData>) {
+    fn thread_main_loop(stop_requested: Arc<AtomicBool>, data_for_job: Arc<PostponedJobArgs>) {
         loop {
             if stop_requested.fetch_and(true, Ordering::Relaxed) {
                 break;
@@ -92,67 +110,53 @@ impl TimerThreadScheduler {
                     Some(Self::postponed_job),
                     Arc::into_raw(data_for_job) as *mut c_void,
                 );
-
-                // sleep for 50 ms
-                thread::sleep(Duration::from_millis(50));
             }
+            // sleep for 50 ms
+            thread::sleep(Duration::from_millis(50));
         }
     }
 
     unsafe extern "C" fn postponed_job(ptr: *mut c_void) {
-        let data = unsafe { Arc::from_raw(ptr as *mut CollectorThreadData) };
+        let args = unsafe { Arc::from_raw(ptr as *mut PostponedJobArgs) };
+
+        let mut profile = match args.profile.try_write() {
+            Ok(profile) => profile,
+            Err(_) => {
+                // FIXME: Do we want to properly collect GC samples? I don't know yet.
+                println!("[pf2 DEBUG] Failed to acquire profile lock (garbage collection possibly in progress). Dropping sample.");
+                return;
+            }
+        };
+
         // Collect stack information from specified Ruby Threads
-        let mut samples_to_push: Vec<Sample> = vec![];
-        let ruby_threads = data.ruby_threads.try_read().unwrap();
+        let ruby_threads = args.ruby_threads.try_read().unwrap();
         for ruby_thread in ruby_threads.iter() {
+            // Check if the thread is still alive
             if unsafe { rb_funcall(*ruby_thread, rb_intern(cstr!("status")), 0) } == Qfalse as u64 {
                 continue;
             }
 
-            let mut buffer: [VALUE; 2000] = [0; 2000];
-            let mut linebuffer: [i32; 2000] = [0; 2000];
-
-            let lines: c_int = unsafe {
-                rb_profile_thread_frames(
-                    *ruby_thread,
-                    0,
-                    2000,
-                    buffer.as_mut_ptr(),
-                    linebuffer.as_mut_ptr(),
-                )
-            };
-
-            // FIXME: Will this really occur?
-            if lines == 0 {
-                continue;
+            let sample = Sample::capture(*ruby_thread);
+            if profile.temporary_sample_buffer.push(sample).is_err() {
+                panic!("[pf2 DEBUG] Temporary sample buffer full. Dropping sample.");
             }
-
-            let mut sample = Sample {
-                elapsed_ns: Instant::now().duration_since(data.start_time).as_nanos(),
-                ruby_thread: *ruby_thread,
-                ruby_thread_native_thread_id: unsafe {
-                    rb_num2int(rb_funcall(
-                        *ruby_thread,
-                        rb_intern(cstr!("native_thread_id")),
-                        0,
-                    ))
-                },
-                frames: vec![],
-            };
-            for i in 0..lines {
-                let frame: VALUE = buffer[i as usize];
-                sample.frames.push(frame);
-            }
-            samples_to_push.push(sample);
         }
+    }
 
-        // Try to lock samples; if failed, just skip this sample
-        // (dmark (GC) might be locking data.samples)
-        if let Ok(mut samples) = data.samples.try_write() {
-            samples.append(&mut samples_to_push);
-        } else {
-            println!("Failed to record samples (could not acquire lock on samples)")
-        };
+    fn start_profile_buffer_flusher_thread(&self, profile: &Arc<RwLock<Profile>>) {
+        let profile = Arc::clone(profile);
+        thread::spawn(move || loop {
+            println!("[pf2 DEBUG] Flushing temporary sample buffer");
+            match profile.try_write() {
+                Ok(mut profile) => {
+                    profile.flush_temporary_sample_buffer();
+                }
+                Err(_) => {
+                    println!("[pf2 ERROR] Failed to acquire profile lock");
+                }
+            }
+            thread::sleep(Duration::from_millis(500));
+        });
     }
 
     // Ruby Methods
@@ -197,33 +201,27 @@ impl TimerThreadScheduler {
 
     unsafe extern "C" fn dmark(ptr: *mut c_void) {
         unsafe {
-            let collector: Box<TimerThreadScheduler> =
-                Box::from_raw(ptr as *mut TimerThreadScheduler);
-
-            // Mark collected sample VALUEs
-            {
-                let samples = collector.samples.try_read().unwrap();
-                for sample in samples.iter() {
-                    rb_gc_mark(sample.ruby_thread);
-                    for frame in sample.frames.iter() {
-                        rb_gc_mark(*frame);
+            let collector = ManuallyDrop::new(Box::from_raw(ptr as *mut TimerThreadScheduler));
+            if let Some(profile) = &collector.profile {
+                match profile.try_read() {
+                    Ok(profile) => {
+                        profile.dmark();
+                    }
+                    Err(_) => {
+                        panic!("[pf2 FATAL] dmark: Failed to acquire profile lock.");
                     }
                 }
             }
-
-            mem::forget(collector);
         }
     }
     unsafe extern "C" fn dfree(ptr: *mut c_void) {
         unsafe {
-            let collector: Box<TimerThreadScheduler> =
-                Box::from_raw(ptr as *mut TimerThreadScheduler);
-            drop(collector);
+            drop(Box::from_raw(ptr as *mut TimerThreadScheduler));
         }
     }
     unsafe extern "C" fn dsize(_: *const c_void) -> size_t {
         // FIXME: Report something better
-        mem::size_of::<TimerThreadScheduler>() as size_t
+        std::mem::size_of::<TimerThreadScheduler>() as size_t
     }
 }
 
