@@ -14,6 +14,8 @@ use std::collections::HashSet;
 use std::ffi::{c_int, c_void, CString};
 use std::mem::ManuallyDrop;
 use std::sync::{Arc, RwLock};
+use std::thread;
+use std::time::Duration;
 use std::{mem, ptr::null_mut};
 
 use rb_sys::*;
@@ -43,6 +45,7 @@ impl SignalScheduler {
 
     fn start(&mut self, _rbself: VALUE, ruby_threads_rary: VALUE) -> VALUE {
         let profile = Arc::new(RwLock::new(Profile::new()));
+        self.start_profile_buffer_flusher_thread(&profile);
         self.install_signal_handler();
 
         let mut target_ruby_threads = HashSet::new();
@@ -129,6 +132,22 @@ impl SignalScheduler {
         if profile.temporary_sample_buffer.push(sample).is_err() {
             panic!("[pf2 DEBUG] Temporary sample buffer full. Dropping sample.");
         }
+    }
+
+    fn start_profile_buffer_flusher_thread(&self, profile: &Arc<RwLock<Profile>>) {
+        let profile = Arc::clone(profile);
+        thread::spawn(move || loop {
+            println!("[pf2 DEBUG] Flushing temporary sample buffer");
+            match profile.try_write() {
+                Ok(mut profile) => {
+                    profile.flush_temporary_sample_buffer();
+                }
+                Err(_) => {
+                    println!("[pf2 ERROR] Failed to acquire profile lock");
+                }
+            }
+            thread::sleep(Duration::from_millis(500));
+        });
     }
 
     // Ruby Methods
