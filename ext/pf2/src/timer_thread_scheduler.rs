@@ -1,7 +1,7 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use std::ffi::{c_int, c_void};
-use std::mem;
+use std::mem::{self, ManuallyDrop};
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -11,49 +11,6 @@ use std::time::{Duration, Instant};
 use rb_sys::*;
 
 use crate::util::*;
-
-unsafe extern "C" fn dmark(ptr: *mut c_void) {
-    unsafe {
-        let collector: Box<TimerThreadScheduler> = Box::from_raw(ptr as *mut TimerThreadScheduler);
-
-        // Mark collected sample VALUEs
-        {
-            let samples = collector.samples.try_read().unwrap();
-            for sample in samples.iter() {
-                rb_gc_mark(sample.ruby_thread);
-                for frame in sample.frames.iter() {
-                    rb_gc_mark(*frame);
-                }
-            }
-        }
-
-        mem::forget(collector);
-    }
-}
-unsafe extern "C" fn dfree(ptr: *mut c_void) {
-    unsafe {
-        let collector: Box<TimerThreadScheduler> = Box::from_raw(ptr as *mut TimerThreadScheduler);
-        drop(collector);
-    }
-}
-unsafe extern "C" fn dsize(_: *const c_void) -> size_t {
-    // FIXME: Report something better
-    mem::size_of::<TimerThreadScheduler>() as size_t
-}
-
-static mut RBDATA: rb_data_type_t = rb_data_type_t {
-    wrap_struct_name: cstr!("SampleCollectorInternal"),
-    function: rb_data_type_struct__bindgen_ty_1 {
-        dmark: Some(dmark),
-        dfree: Some(dfree),
-        dsize: Some(dsize),
-        dcompact: None,
-        reserved: [null_mut(); 1],
-    },
-    parent: null_mut(),
-    data: null_mut(),
-    flags: 0,
-};
 
 #[derive(Clone, Debug)]
 pub struct TimerThreadScheduler {
@@ -198,52 +155,88 @@ impl TimerThreadScheduler {
         };
     }
 
-    // -----
+    // Ruby Methods
 
-    // Obtain the Ruby VALUE of `Pf2::SampleCollector`.
-    #[allow(non_snake_case)]
-    fn get_ruby_class() -> VALUE {
+    // SampleCollector.start
+    pub unsafe extern "C" fn rb_start(rbself: VALUE, ruby_threads: VALUE) -> VALUE {
+        let mut collector = Self::get_struct_from(rbself);
+        collector.start(rbself, ruby_threads)
+    }
+
+    // SampleCollector.stop
+    pub unsafe extern "C" fn rb_stop(rbself: VALUE) -> VALUE {
+        let collector = Self::get_struct_from(rbself);
+        collector.stop(rbself)
+    }
+
+    // Functions for TypedData
+
+    fn get_struct_from(obj: VALUE) -> ManuallyDrop<Box<Self>> {
         unsafe {
-            let rb_mPf2: VALUE = rb_define_module(cstr!("Pf2"));
-            rb_define_class_under(rb_mPf2, cstr!("TimerThreadScheduler"), rb_cObject)
+            let ptr = rb_check_typeddata(obj, &RBDATA);
+            ManuallyDrop::new(Box::from_raw(ptr as *mut TimerThreadScheduler))
         }
     }
 
-    fn get_struct_from(obj: VALUE) -> Box<Self> {
-        unsafe { Box::from_raw(rb_check_typeddata(obj, &RBDATA) as *mut TimerThreadScheduler) }
-    }
-
-    fn wrap_struct(collector: TimerThreadScheduler) -> VALUE {
-        #[allow(non_snake_case)]
-        let rb_cSampleCollector = Self::get_ruby_class();
+    #[allow(non_snake_case)]
+    pub unsafe extern "C" fn rb_alloc(_rbself: VALUE) -> VALUE {
+        let collector = TimerThreadScheduler::new();
 
         unsafe {
+            let rb_mPf2: VALUE = rb_define_module(cstr!("Pf2"));
+            let rb_cTimerThreadScheduler =
+                rb_define_class_under(rb_mPf2, cstr!("TimerThreadScheduler"), rb_cObject);
+
             rb_data_typed_object_wrap(
-                rb_cSampleCollector,
+                rb_cTimerThreadScheduler,
                 Box::into_raw(Box::new(collector)) as *mut _ as *mut c_void,
                 &RBDATA,
             )
         }
     }
 
-    pub unsafe extern "C" fn rb_alloc(_rbself: VALUE) -> VALUE {
-        let collector = TimerThreadScheduler::new();
-        Self::wrap_struct(collector)
-    }
+    unsafe extern "C" fn dmark(ptr: *mut c_void) {
+        unsafe {
+            let collector: Box<TimerThreadScheduler> =
+                Box::from_raw(ptr as *mut TimerThreadScheduler);
 
-    // SampleCollector.start
-    pub unsafe extern "C" fn rb_start(rbself: VALUE, ruby_threads: VALUE) -> VALUE {
-        let mut collector = Self::get_struct_from(rbself);
-        let ret = collector.start(rbself, ruby_threads);
-        mem::forget(collector);
-        ret
-    }
+            // Mark collected sample VALUEs
+            {
+                let samples = collector.samples.try_read().unwrap();
+                for sample in samples.iter() {
+                    rb_gc_mark(sample.ruby_thread);
+                    for frame in sample.frames.iter() {
+                        rb_gc_mark(*frame);
+                    }
+                }
+            }
 
-    // SampleCollector.stop
-    pub unsafe extern "C" fn rb_stop(rbself: VALUE) -> VALUE {
-        let collector = Self::get_struct_from(rbself);
-        let ret = collector.stop(rbself);
-        mem::forget(collector);
-        ret
+            mem::forget(collector);
+        }
+    }
+    unsafe extern "C" fn dfree(ptr: *mut c_void) {
+        unsafe {
+            let collector: Box<TimerThreadScheduler> =
+                Box::from_raw(ptr as *mut TimerThreadScheduler);
+            drop(collector);
+        }
+    }
+    unsafe extern "C" fn dsize(_: *const c_void) -> size_t {
+        // FIXME: Report something better
+        mem::size_of::<TimerThreadScheduler>() as size_t
     }
 }
+
+static mut RBDATA: rb_data_type_t = rb_data_type_t {
+    wrap_struct_name: cstr!("TimerThreadScheduler"),
+    function: rb_data_type_struct__bindgen_ty_1 {
+        dmark: Some(TimerThreadScheduler::dmark),
+        dfree: Some(TimerThreadScheduler::dfree),
+        dsize: Some(TimerThreadScheduler::dsize),
+        dcompact: None,
+        reserved: [null_mut(); 1],
+    },
+    parent: null_mut(),
+    data: null_mut(),
+    flags: 0,
+};
