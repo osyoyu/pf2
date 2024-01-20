@@ -6,6 +6,10 @@ use rb_sys::*;
 use super::ringbuffer::Ringbuffer;
 use super::sample::Sample;
 
+// Capacity large enough to hold 1 second worth of samples for 16 threads
+// 16 threads * 20 samples per second * 1 second = 320
+const DEFAULT_RINGBUFFER_CAPACITY: usize = 320;
+
 #[derive(Debug)]
 pub struct Profile {
     pub start_timestamp: Instant,
@@ -19,7 +23,7 @@ impl Profile {
         Self {
             start_timestamp: Instant::now(),
             samples: vec![],
-            temporary_sample_buffer: Ringbuffer::new(10000),
+            temporary_sample_buffer: Ringbuffer::new(DEFAULT_RINGBUFFER_CAPACITY),
             known_values: HashSet::new(),
         }
     }
