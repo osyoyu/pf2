@@ -1,6 +1,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::ffi::c_void;
+use std::ffi::{c_void, CString};
 use std::mem::ManuallyDrop;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,6 +11,7 @@ use std::time::Duration;
 use rb_sys::*;
 
 use crate::profile::Profile;
+use crate::profile_serializer::ProfileSerializer;
 use crate::sample::Sample;
 use crate::util::*;
 
@@ -108,12 +109,12 @@ impl TimerThreadScheduler {
             );
             println!("[pf2 DEBUG] Number of samples: {}", profile.samples.len());
 
-            // TODO: Return the profile in a serialized format
+            let serialized = ProfileSerializer::serialize(&profile);
+            let serialized = CString::new(serialized).unwrap();
+            unsafe { rb_str_new_cstr(serialized.as_ptr()) }
         } else {
             panic!("stop() called before start()");
         }
-
-        Qtrue.into()
     }
 
     unsafe extern "C" fn postponed_job(ptr: *mut c_void) {
