@@ -51,15 +51,38 @@ impl TimerThreadScheduler {
 
         // Start monitoring thread
         let stop_requested = Arc::clone(&self.stop_requested);
-        let data_for_job: Arc<PostponedJobArgs> = Arc::new(PostponedJobArgs {
+        let postponed_job_args: Box<PostponedJobArgs> = Box::new(PostponedJobArgs {
             ruby_threads: Arc::clone(&self.ruby_threads),
             profile: Arc::clone(&profile),
         });
-        thread::spawn(move || Self::thread_main_loop(stop_requested, data_for_job));
+        let postponed_job_handle: rb_postponed_job_handle_t = unsafe {
+            rb_postponed_job_preregister(
+                0,
+                Some(Self::postponed_job),
+                Box::into_raw(postponed_job_args) as *mut c_void, // FIXME: leak
+            )
+        };
+        thread::spawn(move || Self::thread_main_loop(stop_requested, postponed_job_handle));
 
         self.profile = Some(profile);
 
         Qtrue.into()
+    }
+
+    fn thread_main_loop(
+        stop_requested: Arc<AtomicBool>,
+        postponed_job_handle: rb_postponed_job_handle_t,
+    ) {
+        loop {
+            if stop_requested.fetch_and(true, Ordering::Relaxed) {
+                break;
+            }
+            unsafe {
+                rb_postponed_job_trigger(postponed_job_handle);
+            }
+            // sleep for 50 ms
+            thread::sleep(Duration::from_millis(50));
+        }
     }
 
     fn stop(&self, _rbself: VALUE) -> VALUE {
@@ -93,31 +116,8 @@ impl TimerThreadScheduler {
         Qtrue.into()
     }
 
-    fn thread_main_loop(stop_requested: Arc<AtomicBool>, data_for_job: Arc<PostponedJobArgs>) {
-        loop {
-            if stop_requested.fetch_and(true, Ordering::Relaxed) {
-                break;
-            }
-
-            let data_for_job = Arc::clone(&data_for_job);
-            unsafe {
-                // FIXME: data_for_job has a high chance of leaking memory here,
-                // as rb_postponed_job_register_one does not invoke postponed_job().
-                // FIXME: Migrate to the new Postponed Job API
-                #[allow(deprecated)]
-                rb_postponed_job_register_one(
-                    0,
-                    Some(Self::postponed_job),
-                    Arc::into_raw(data_for_job) as *mut c_void,
-                );
-            }
-            // sleep for 50 ms
-            thread::sleep(Duration::from_millis(50));
-        }
-    }
-
     unsafe extern "C" fn postponed_job(ptr: *mut c_void) {
-        let args = unsafe { Arc::from_raw(ptr as *mut PostponedJobArgs) };
+        let args = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut PostponedJobArgs)) };
 
         let mut profile = match args.profile.try_write() {
             Ok(profile) => profile,
