@@ -5,6 +5,9 @@ extern crate serde_derive;
 mod ruby_init;
 
 mod profile;
+mod profile_serializer;
+mod ringbuffer;
+mod sample;
 mod sample_collector;
-mod timer_collector;
+mod signal_scheduler;
 mod util;

@@ -1,6 +1,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::ffi::{c_int, c_void, CString};
+use std::ffi::{c_int, c_void};
 use std::mem;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 
 use rb_sys::*;
 
-use crate::profile::Profile;
 use crate::util::*;
 
 unsafe extern "C" fn dmark(ptr: *mut c_void) {
@@ -56,6 +55,7 @@ static mut RBDATA: rb_data_type_t = rb_data_type_t {
     flags: 0,
 };
 
+// TODO: To be renamed to TimerThreadScheduler
 #[derive(Clone, Debug)]
 pub struct SampleCollector {
     start_time: Instant,
@@ -113,11 +113,10 @@ impl SampleCollector {
     fn stop(&self, _rbself: VALUE) -> VALUE {
         // Stop the collector thread
         self.stop_requested.store(true, Ordering::Relaxed);
-        let profile = Profile::from_samples(&self.samples.try_read().unwrap());
 
-        let json = serde_json::to_string(&profile).unwrap();
-        let json_cstring = CString::new(json).unwrap();
-        unsafe { rb_str_new_cstr(json_cstring.as_ptr()) }
+        // TODO: Return the profile in a serialized format
+
+        Qtrue.into()
     }
 
     fn thread_main_loop(stop_requested: Arc<AtomicBool>, data_for_job: Arc<CollectorThreadData>) {
