@@ -195,7 +195,7 @@ impl SignalScheduler {
         unsafe {
             let collector = ManuallyDrop::new(Box::from_raw(ptr as *mut SignalScheduler));
             if let Some(profile) = &collector.profile {
-                match profile.try_read() {
+                match profile.read() {
                     Ok(profile) => {
                         profile.dmark();
                     }
