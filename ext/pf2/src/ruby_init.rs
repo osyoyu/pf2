@@ -2,8 +2,8 @@
 
 use rb_sys::*;
 
-use crate::sample_collector::SampleCollector;
 use crate::signal_scheduler::SignalScheduler;
+use crate::timer_thread_scheduler::TimerThreadScheduler;
 use crate::util::*;
 
 #[allow(non_snake_case)]
@@ -28,22 +28,22 @@ extern "C" fn Init_pf2() {
             0,
         );
 
-        let rb_mPf2_Collector_PostponedJobCollector =
-            rb_define_class_under(rb_mPf2, cstr!("SampleCollector"), rb_cObject);
+        let rb_mPf2_TimerThreadScheduler =
+            rb_define_class_under(rb_mPf2, cstr!("TimerThreadScheduler"), rb_cObject);
         rb_define_alloc_func(
-            rb_mPf2_Collector_PostponedJobCollector,
-            Some(SampleCollector::rb_alloc),
+            rb_mPf2_TimerThreadScheduler,
+            Some(TimerThreadScheduler::rb_alloc),
         );
         rb_define_method(
-            rb_mPf2_Collector_PostponedJobCollector,
+            rb_mPf2_TimerThreadScheduler,
             cstr!("start"),
-            Some(to_ruby_cfunc2(SampleCollector::rb_start)),
+            Some(to_ruby_cfunc2(TimerThreadScheduler::rb_start)),
             1,
         );
         rb_define_method(
-            rb_mPf2_Collector_PostponedJobCollector,
+            rb_mPf2_TimerThreadScheduler,
             cstr!("stop"),
-            Some(to_ruby_cfunc1(SampleCollector::rb_stop)),
+            Some(to_ruby_cfunc1(TimerThreadScheduler::rb_stop)),
             0,
         );
     }

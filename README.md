@@ -78,7 +78,7 @@ Signals are directed to Ruby Threads' underlying pthread, effectively "pausing" 
 
 This scheduler heavily relies on Ruby's 1:N Thread model (1 Ruby Threads is strongly tied to a native pthread). It will not work properly in MaNy (`RUBY_MN_THREADS=1`).
 
-#### TimerThreadScheduler (to be renamed from SampleCollector)
+#### TimerThreadScheduler
 
 Another scheduler is the `TimerThreadScheduler`, which maintains a time-keeping thread by itself. A new native thread (pthread on Linux/macOS) will be created, and an infinite loop will be run inside. After `sleep(2)`-ing for the specified interval time, sampling will be queued using Ruby's Postponed Job API.
 
