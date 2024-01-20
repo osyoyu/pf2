@@ -8,6 +8,6 @@ mod profile;
 mod profile_serializer;
 mod ringbuffer;
 mod sample;
-mod sample_collector;
 mod signal_scheduler;
+mod timer_thread_scheduler;
 mod util;

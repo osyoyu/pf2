@@ -14,7 +14,7 @@ use crate::util::*;
 
 unsafe extern "C" fn dmark(ptr: *mut c_void) {
     unsafe {
-        let collector: Box<SampleCollector> = Box::from_raw(ptr as *mut SampleCollector);
+        let collector: Box<TimerThreadScheduler> = Box::from_raw(ptr as *mut TimerThreadScheduler);
 
         // Mark collected sample VALUEs
         {
@@ -32,13 +32,13 @@ unsafe extern "C" fn dmark(ptr: *mut c_void) {
 }
 unsafe extern "C" fn dfree(ptr: *mut c_void) {
     unsafe {
-        let collector: Box<SampleCollector> = Box::from_raw(ptr as *mut SampleCollector);
+        let collector: Box<TimerThreadScheduler> = Box::from_raw(ptr as *mut TimerThreadScheduler);
         drop(collector);
     }
 }
 unsafe extern "C" fn dsize(_: *const c_void) -> size_t {
     // FIXME: Report something better
-    mem::size_of::<SampleCollector>() as size_t
+    mem::size_of::<TimerThreadScheduler>() as size_t
 }
 
 static mut RBDATA: rb_data_type_t = rb_data_type_t {
@@ -55,9 +55,8 @@ static mut RBDATA: rb_data_type_t = rb_data_type_t {
     flags: 0,
 };
 
-// TODO: To be renamed to TimerThreadScheduler
 #[derive(Clone, Debug)]
-pub struct SampleCollector {
+pub struct TimerThreadScheduler {
     start_time: Instant,
     ruby_threads: Arc<RwLock<Vec<VALUE>>>,
     samples: Arc<RwLock<Vec<Sample>>>,
@@ -79,9 +78,9 @@ pub struct Sample {
     pub frames: Vec<VALUE>,
 }
 
-impl SampleCollector {
+impl TimerThreadScheduler {
     fn new() -> Self {
-        SampleCollector {
+        TimerThreadScheduler {
             start_time: Instant::now(),
             ruby_threads: Arc::new(RwLock::new(vec![])),
             samples: Arc::new(RwLock::new(vec![])),
@@ -206,15 +205,15 @@ impl SampleCollector {
     fn get_ruby_class() -> VALUE {
         unsafe {
             let rb_mPf2: VALUE = rb_define_module(cstr!("Pf2"));
-            rb_define_class_under(rb_mPf2, cstr!("SampleCollector"), rb_cObject)
+            rb_define_class_under(rb_mPf2, cstr!("TimerThreadScheduler"), rb_cObject)
         }
     }
 
     fn get_struct_from(obj: VALUE) -> Box<Self> {
-        unsafe { Box::from_raw(rb_check_typeddata(obj, &RBDATA) as *mut SampleCollector) }
+        unsafe { Box::from_raw(rb_check_typeddata(obj, &RBDATA) as *mut TimerThreadScheduler) }
     }
 
-    fn wrap_struct(collector: SampleCollector) -> VALUE {
+    fn wrap_struct(collector: TimerThreadScheduler) -> VALUE {
         #[allow(non_snake_case)]
         let rb_cSampleCollector = Self::get_ruby_class();
 
@@ -228,7 +227,7 @@ impl SampleCollector {
     }
 
     pub unsafe extern "C" fn rb_alloc(_rbself: VALUE) -> VALUE {
-        let collector = SampleCollector::new();
+        let collector = TimerThreadScheduler::new();
         Self::wrap_struct(collector)
     }
 
