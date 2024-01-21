@@ -63,7 +63,7 @@ impl TimerInstaller {
         data: *const rb_internal_thread_event_data,
         custom_data: *mut c_void,
     ) {
-        // The SignalCollector (as a Ruby obj) should be passed as custom_data
+        // The SignalScheduler (as a Ruby obj) should be passed as custom_data
         let internal =
             unsafe { ManuallyDrop::new(Box::from_raw(custom_data as *mut Mutex<Internal>)) };
         let mut internal = internal.lock().unwrap();

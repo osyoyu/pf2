@@ -164,7 +164,7 @@ impl SignalScheduler {
 
     // Functions for TypedData
 
-    // Extract the SignalCollector struct from a Ruby object
+    // Extract the SignalScheduler struct from a Ruby object
     unsafe fn get_struct_from(obj: VALUE) -> ManuallyDrop<Box<Self>> {
         unsafe {
             let ptr = rb_check_typeddata(obj, &RBDATA);
@@ -179,12 +179,12 @@ impl SignalScheduler {
 
         unsafe {
             let rb_mPf2: VALUE = rb_define_module(cstr!("Pf2"));
-            let rb_cSignalCollector =
-                rb_define_class_under(rb_mPf2, cstr!("SignalCollector"), rb_cObject);
+            let rb_cSignalScheduler =
+                rb_define_class_under(rb_mPf2, cstr!("SignalScheduler"), rb_cObject);
 
-            // "Wrap" the SignalCollector struct into a Ruby object
+            // "Wrap" the SignalScheduler struct into a Ruby object
             rb_data_typed_object_wrap(
-                rb_cSignalCollector,
+                rb_cSignalScheduler,
                 Box::into_raw(collector) as *mut c_void,
                 &RBDATA,
             )
@@ -220,7 +220,7 @@ impl SignalScheduler {
 }
 
 static mut RBDATA: rb_data_type_t = rb_data_type_t {
-    wrap_struct_name: cstr!("SignalCollector"),
+    wrap_struct_name: cstr!("SignalScheduler"),
     function: rb_data_type_struct__bindgen_ty_1 {
         dmark: Some(SignalScheduler::dmark),
         dfree: Some(SignalScheduler::dfree),

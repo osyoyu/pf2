@@ -14,17 +14,17 @@ extern "C" fn Init_pf2() {
 
         #[cfg(target_os = "linux")]
         {
-            let rb_mPf2_SignalCollector =
-                rb_define_class_under(rb_mPf2, cstr!("SignalCollector"), rb_cObject);
-            rb_define_alloc_func(rb_mPf2_SignalCollector, Some(SignalScheduler::rb_alloc));
+            let rb_mPf2_SignalScheduler =
+                rb_define_class_under(rb_mPf2, cstr!("SignalScheduler"), rb_cObject);
+            rb_define_alloc_func(rb_mPf2_SignalScheduler, Some(SignalScheduler::rb_alloc));
             rb_define_method(
-                rb_mPf2_SignalCollector,
+                rb_mPf2_SignalScheduler,
                 cstr!("start"),
                 Some(to_ruby_cfunc2(SignalScheduler::rb_start)),
                 1,
             );
             rb_define_method(
-                rb_mPf2_SignalCollector,
+                rb_mPf2_SignalScheduler,
                 cstr!("stop"),
                 Some(to_ruby_cfunc1(SignalScheduler::rb_stop)),
                 0,
