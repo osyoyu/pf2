@@ -8,6 +8,7 @@ mod profile;
 mod profile_serializer;
 mod ringbuffer;
 mod sample;
+#[cfg(target_os = "linux")]
 mod signal_scheduler;
 mod timer_thread_scheduler;
 mod util;
