@@ -43,7 +43,14 @@ impl SignalScheduler {
         }
     }
 
-    fn start(&mut self, _rbself: VALUE, ruby_threads_rary: VALUE) -> VALUE {
+    fn start(
+        &mut self,
+        _rbself: VALUE,
+        ruby_threads_rary: VALUE,
+        track_new_threads: VALUE,
+    ) -> VALUE {
+        let track_new_threads = RTEST(track_new_threads);
+
         let profile = Arc::new(RwLock::new(Profile::new()));
         self.start_profile_buffer_flusher_thread(&profile);
         self.install_signal_handler();
@@ -59,6 +66,7 @@ impl SignalScheduler {
             self.configuration.clone(),
             &target_ruby_threads,
             Arc::clone(&profile),
+            track_new_threads,
         );
 
         self.profile = Some(profile);
@@ -152,9 +160,13 @@ impl SignalScheduler {
 
     // Ruby Methods
 
-    pub unsafe extern "C" fn rb_start(rbself: VALUE, ruby_threads: VALUE) -> VALUE {
+    pub unsafe extern "C" fn rb_start(
+        rbself: VALUE,
+        ruby_threads: VALUE,
+        track_new_threads: VALUE,
+    ) -> VALUE {
         let mut collector = unsafe { Self::get_struct_from(rbself) };
-        collector.start(rbself, ruby_threads)
+        collector.start(rbself, ruby_threads, track_new_threads)
     }
 
     pub unsafe extern "C" fn rb_stop(rbself: VALUE) -> VALUE {

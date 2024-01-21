@@ -169,7 +169,7 @@ impl TimerThreadScheduler {
     // Ruby Methods
 
     // SampleCollector.start
-    pub unsafe extern "C" fn rb_start(rbself: VALUE, ruby_threads: VALUE) -> VALUE {
+    pub unsafe extern "C" fn rb_start(rbself: VALUE, ruby_threads: VALUE, _: VALUE) -> VALUE {
         let mut collector = Self::get_struct_from(rbself);
         collector.start(rbself, ruby_threads)
     }

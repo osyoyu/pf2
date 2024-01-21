@@ -36,6 +36,7 @@ impl TimerInstaller {
         configuration: Configuration,
         ruby_threads: &HashSet<VALUE>,
         profile: Arc<RwLock<Profile>>,
+        track_new_threads: bool,
     ) {
         let registrar = Self {
             internal: Box::new(Mutex::new(Internal {
@@ -58,6 +59,16 @@ impl TimerInstaller {
             // (at least 2 Ruby Threads must be active for the RESUMED hook to be fired)
             rb_thread_create(Some(Self::do_nothing), null_mut());
         };
+
+        if track_new_threads {
+            unsafe {
+                rb_internal_thread_add_event_hook(
+                    Some(Self::on_thread_start),
+                    RUBY_INTERNAL_THREAD_EVENT_STARTED,
+                    ptr as *mut c_void,
+                );
+            };
+        }
     }
 
     unsafe extern "C" fn do_nothing(_: *mut c_void) -> VALUE {
@@ -83,23 +94,19 @@ impl TimerInstaller {
 
         // Check if the current thread is already registered
         let current_pthread_id = unsafe { libc::pthread_self() };
+        if internal
+            .registered_pthread_ids
+            .contains(&current_pthread_id)
         {
-            if internal
-                .registered_pthread_ids
-                .contains(&current_pthread_id)
-            {
-                return;
-            }
+            return;
         }
 
-        {
-            // Record the pthread ID of the current thread
-            internal.registered_pthread_ids.insert(current_pthread_id);
-            // Keep a mapping from kernel thread ID to Ruby Thread
-            internal
-                .kernel_thread_id_to_ruby_thread_map
-                .insert(unsafe { libc::gettid() }, current_ruby_thread);
-        }
+        // Record the pthread ID of the current thread
+        internal.registered_pthread_ids.insert(current_pthread_id);
+        // Keep a mapping from kernel thread ID to Ruby Thread
+        internal
+            .kernel_thread_id_to_ruby_thread_map
+            .insert(unsafe { libc::gettid() }, current_ruby_thread);
 
         Self::register_timer_to_current_thread(
             &internal.configuration,
@@ -108,6 +115,21 @@ impl TimerInstaller {
         );
 
         // TODO: Remove the hook when all threads have been registered
+    }
+
+    // Thread resume callback
+    unsafe extern "C" fn on_thread_start(
+        _flag: rb_event_flag_t,
+        data: *const rb_internal_thread_event_data,
+        custom_data: *mut c_void,
+    ) {
+        // The SignalScheduler (as a Ruby obj) should be passed as custom_data
+        let internal =
+            unsafe { ManuallyDrop::new(Box::from_raw(custom_data as *mut Mutex<Internal>)) };
+        let mut internal = internal.lock().unwrap();
+
+        let current_ruby_thread: VALUE = unsafe { (*data).thread };
+        internal.target_ruby_threads.insert(current_ruby_thread);
     }
 
     // Creates a new POSIX timer which invocates sampling for the thread that called this function.

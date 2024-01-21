@@ -20,6 +20,15 @@ pub fn to_ruby_cfunc1<T>(f: unsafe extern "C" fn(T) -> VALUE) -> RubyCFunc {
 pub fn to_ruby_cfunc2<T, U>(f: unsafe extern "C" fn(T, U) -> VALUE) -> RubyCFunc {
     unsafe { transmute::<unsafe extern "C" fn(T, U) -> VALUE, RubyCFunc>(f) }
 }
+// TODO: rewrite as macro
+pub fn to_ruby_cfunc3<T, U, V>(f: unsafe extern "C" fn(T, U, V) -> VALUE) -> RubyCFunc {
+    unsafe { transmute::<unsafe extern "C" fn(T, U, V) -> VALUE, RubyCFunc>(f) }
+}
+
+#[allow(non_snake_case)]
+pub fn RTEST(v: VALUE) -> bool {
+    v != Qfalse as VALUE && v != Qnil as VALUE
+}
 
 extern "C" {
     pub fn extract_si_value_sival_ptr(info: *mut libc::siginfo_t) -> *mut c_void;

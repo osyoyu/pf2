@@ -21,8 +21,8 @@ extern "C" fn Init_pf2() {
             rb_define_method(
                 rb_mPf2_SignalScheduler,
                 cstr!("start"),
-                Some(to_ruby_cfunc2(SignalScheduler::rb_start)),
-                1,
+                Some(to_ruby_cfunc3(SignalScheduler::rb_start)),
+                2,
             );
             rb_define_method(
                 rb_mPf2_SignalScheduler,
@@ -41,8 +41,8 @@ extern "C" fn Init_pf2() {
         rb_define_method(
             rb_mPf2_TimerThreadScheduler,
             cstr!("start"),
-            Some(to_ruby_cfunc2(TimerThreadScheduler::rb_start)),
-            1,
+            Some(to_ruby_cfunc3(TimerThreadScheduler::rb_start)),
+            2,
         );
         rb_define_method(
             rb_mPf2_TimerThreadScheduler,
