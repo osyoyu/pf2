@@ -4,27 +4,31 @@ require_relative 'pf2/version'
 module Pf2
   class Error < StandardError; end
 
-  @@collector = nil
-  @@threads = []
+  def self.default_scheduler_class
+    # SignalScheduler is Linux-only. Use TimerThreadScheduler on other platforms.
+    if defined?(SignalScheduler)
+      SignalScheduler
+    else
+      TimerThreadScheduler
+    end
+  end
+
+  def self.default_scheduler
+    @@default_scheduler ||= default_scheduler_class.new
+  end
 
   def self.start(...)
-    @collector = Pf2::TimerCollector.new
-    @collector.start(...)
+    default_scheduler.start(...)
   end
 
-  def self.stop
-    @collector.stop
+  def self.stop(...)
+    default_scheduler.stop(...)
   end
 
-  def self.install_to_current_thread(...)
-    @collector.install_to_current_thread(...)
-  end
-
-  def self.threads
-    @@threads
-  end
-
-  def self.threads=(th)
-    @@threads = th
+  def self.profile(&block)
+    raise ArgumentError, "block required" unless block_given?
+    start([Thread.current], true)
+    yield
+    stop
   end
 end
