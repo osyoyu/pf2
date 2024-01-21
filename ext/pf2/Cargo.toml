@@ -9,7 +9,9 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
+env_logger = { version = "0.11.0", optional = true }
 libc = "0.2.149"
+log = "0.4.20"
 rb-sys = { version = "0.9.82", features = ["stable-api", "stable-api-compiled-testing"] } # using stable-api-compiled-testing for generating bindings from Ruby source
 serde = "1.0.189"
 serde_derive = "1.0.189"
@@ -17,3 +19,6 @@ serde_json = "1.0.107"
 
 [build-dependencies]
 cc = "1.0.83"
+
+[features]
+debug = ["env_logger"]

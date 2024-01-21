@@ -10,6 +10,14 @@ use crate::util::*;
 #[allow(non_snake_case)]
 #[no_mangle]
 extern "C" fn Init_pf2() {
+    #[cfg(feature = "debug")]
+    {
+        env_logger::builder()
+            .format_timestamp(None)
+            .format_module_path(false)
+            .init();
+    }
+
     unsafe {
         let rb_mPf2: VALUE = rb_define_module(cstr!("Pf2"));
 

@@ -187,9 +187,6 @@ impl TimerInstaller {
             panic!("timer_settime failed: {}", err);
         }
 
-        println!(
-            "[pf2 DEBUG] timer registered for thread {}",
-            current_pthread_id
-        );
+        log::debug!("timer registered for thread {}", current_pthread_id);
     }
 }

@@ -103,11 +103,7 @@ impl TimerThreadScheduler {
             }
 
             let profile = profile.try_read().unwrap();
-            println!(
-                "[pf2 DEBUG] Elapsed time: {:?}",
-                profile.samples.last().unwrap().timestamp - profile.start_timestamp
-            );
-            println!("[pf2 DEBUG] Number of samples: {}", profile.samples.len());
+            log::debug!("Number of samples: {}", profile.samples.len());
 
             let serialized = ProfileSerializer::serialize(&profile);
             let serialized = CString::new(serialized).unwrap();
@@ -127,7 +123,7 @@ impl TimerThreadScheduler {
             Ok(profile) => profile,
             Err(_) => {
                 // FIXME: Do we want to properly collect GC samples? I don't know yet.
-                println!("[pf2 DEBUG] Failed to acquire profile lock (garbage collection possibly in progress). Dropping sample.");
+                log::trace!("Failed to acquire profile lock (garbage collection possibly in progress). Dropping sample.");
                 return;
             }
         };
@@ -142,7 +138,7 @@ impl TimerThreadScheduler {
 
             let sample = Sample::capture(*ruby_thread);
             if profile.temporary_sample_buffer.push(sample).is_err() {
-                panic!("[pf2 DEBUG] Temporary sample buffer full. Dropping sample.");
+                log::debug!("Temporary sample buffer full. Dropping sample.");
             }
         }
         unsafe {
@@ -153,13 +149,13 @@ impl TimerThreadScheduler {
     fn start_profile_buffer_flusher_thread(&self, profile: &Arc<RwLock<Profile>>) {
         let profile = Arc::clone(profile);
         thread::spawn(move || loop {
-            println!("[pf2 DEBUG] Flushing temporary sample buffer");
+            log::trace!("Flushing temporary sample buffer");
             match profile.try_write() {
                 Ok(mut profile) => {
                     profile.flush_temporary_sample_buffer();
                 }
                 Err(_) => {
-                    println!("[pf2 ERROR] Failed to acquire profile lock");
+                    log::debug!("flusher: Failed to acquire profile lock");
                 }
             }
             thread::sleep(Duration::from_millis(500));
