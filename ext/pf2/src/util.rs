@@ -16,11 +16,6 @@ pub type RubyCFunc = unsafe extern "C" fn() -> VALUE;
 pub fn to_ruby_cfunc1<T>(f: unsafe extern "C" fn(T) -> VALUE) -> RubyCFunc {
     unsafe { transmute::<unsafe extern "C" fn(T) -> VALUE, RubyCFunc>(f) }
 }
-// TODO: rewrite as macro
-pub fn to_ruby_cfunc2<T, U>(f: unsafe extern "C" fn(T, U) -> VALUE) -> RubyCFunc {
-    unsafe { transmute::<unsafe extern "C" fn(T, U) -> VALUE, RubyCFunc>(f) }
-}
-// TODO: rewrite as macro
 pub fn to_ruby_cfunc3<T, U, V>(f: unsafe extern "C" fn(T, U, V) -> VALUE) -> RubyCFunc {
     unsafe { transmute::<unsafe extern "C" fn(T, U, V) -> VALUE, RubyCFunc>(f) }
 }
