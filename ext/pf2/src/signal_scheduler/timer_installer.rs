@@ -53,8 +53,15 @@ impl TimerInstaller {
                 Some(Self::on_thread_resume),
                 RUBY_INTERNAL_THREAD_EVENT_RESUMED,
                 ptr as *mut c_void,
-            )
+            );
+            // Spawn a no-op Thread to fire the event hook
+            // (at least 2 Ruby Threads must be active for the RESUMED hook to be fired)
+            rb_thread_create(Some(Self::do_nothing), null_mut());
         };
+    }
+
+    unsafe extern "C" fn do_nothing(_: *mut c_void) -> VALUE {
+        Qnil.into()
     }
 
     // Thread resume callback
