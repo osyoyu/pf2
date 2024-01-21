@@ -118,6 +118,9 @@ impl TimerThreadScheduler {
     }
 
     unsafe extern "C" fn postponed_job(ptr: *mut c_void) {
+        unsafe {
+            rb_gc_disable();
+        }
         let args = unsafe { ManuallyDrop::new(Box::from_raw(ptr as *mut PostponedJobArgs)) };
 
         let mut profile = match args.profile.try_write() {
@@ -141,6 +144,9 @@ impl TimerThreadScheduler {
             if profile.temporary_sample_buffer.push(sample).is_err() {
                 panic!("[pf2 DEBUG] Temporary sample buffer full. Dropping sample.");
             }
+        }
+        unsafe {
+            rb_gc_enable();
         }
     }
 
