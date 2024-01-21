@@ -2,6 +2,7 @@
 
 use rb_sys::*;
 
+#[cfg(target_os = "linux")]
 use crate::signal_scheduler::SignalScheduler;
 use crate::timer_thread_scheduler::TimerThreadScheduler;
 use crate::util::*;
