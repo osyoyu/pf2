@@ -136,7 +136,7 @@ impl TimerThreadScheduler {
                 continue;
             }
 
-            let sample = Sample::capture(*ruby_thread);
+            let sample = Sample::capture(*ruby_thread, &profile.backtrace_state);
             if profile.temporary_sample_buffer.push(sample).is_err() {
                 log::debug!("Temporary sample buffer full. Dropping sample.");
             }

@@ -71,6 +71,7 @@ mod tests {
             line_count: 0,
             frames: [0; 500],
             linenos: [0; 500],
+            c_backtrace_pcs: [0; 1001],
         };
         let sample2 = Sample {
             ruby_thread: 2,
@@ -78,6 +79,7 @@ mod tests {
             line_count: 0,
             frames: [0; 500],
             linenos: [0; 500],
+            c_backtrace_pcs: [0; 1001],
         };
 
         ringbuffer.push(sample1).unwrap();
@@ -97,6 +99,7 @@ mod tests {
             line_count: 0,
             frames: [0; 500],
             linenos: [0; 500],
+            c_backtrace_pcs: [0; 1001],
         };
         let sample2 = Sample {
             ruby_thread: 2,
@@ -104,6 +107,7 @@ mod tests {
             line_count: 0,
             frames: [0; 500],
             linenos: [0; 500],
+            c_backtrace_pcs: [0; 1001],
         };
 
         ringbuffer.push(sample1).unwrap();
@@ -119,6 +123,7 @@ mod tests {
             line_count: 0,
             frames: [0; 500],
             linenos: [0; 500],
+            c_backtrace_pcs: [0; 1001],
         };
         let sample2 = Sample {
             ruby_thread: 2,
@@ -126,6 +131,7 @@ mod tests {
             line_count: 0,
             frames: [0; 500],
             linenos: [0; 500],
+            c_backtrace_pcs: [0; 1001],
         };
         let sample3 = Sample {
             ruby_thread: 3,
@@ -133,6 +139,7 @@ mod tests {
             line_count: 0,
             frames: [0; 500],
             linenos: [0; 500],
+            c_backtrace_pcs: [0; 1001],
         };
 
         ringbuffer.push(sample1).unwrap();
