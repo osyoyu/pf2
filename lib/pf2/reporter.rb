@@ -36,6 +36,11 @@ module Pf2
             },
             {
               name: "Native",
+              color: "blue",
+              subcategories: ["Code"],
+            },
+            {
+              name: "Native",
               color: "lightblue",
               subcategories: ["Code"],
             },
@@ -68,7 +73,7 @@ module Pf2
       def emit
         func_table = build_func_table
         frame_table = build_frame_table
-        stack_table = build_stack_table
+        stack_table = build_stack_table(func_table, frame_table)
         samples = build_samples
 
         string_table = build_string_table
@@ -173,8 +178,10 @@ module Pf2
         }
 
         @thread[:frames].each.with_index do |(id, frame), i|
-          ret[:name] << string_id(frame[:full_label])
-          ret[:is_js] << false
+          native = (frame[:entry_type] == 'Native')
+          label = "#{native ? "Native: " : ""}#{frame[:full_label]}"
+          ret[:name] << string_id(label)
+          ret[:is_js] << !native
           ret[:relevant_for_js] << false
           ret[:resource] << -1
           ret[:file_name] << nil
@@ -188,7 +195,7 @@ module Pf2
         ret
       end
 
-      def build_stack_table
+      def build_stack_table(func_table, frame_table)
         ret = {
           frame: [],
           category: [],
@@ -205,7 +212,7 @@ module Pf2
 
           prefix, node = queue.shift
           ret[:frame] << @frame_id_map[node[:frame_id]]
-          ret[:category] << 1
+          ret[:category] << (build_string_table[func_table[:name][frame_table[:func][@frame_id_map[node[:frame_id]]]]].start_with?('Native:') ? 2 : 1)
           ret[:subcategory] << nil
           ret[:prefix] << prefix
 
