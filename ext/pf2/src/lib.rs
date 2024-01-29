@@ -4,6 +4,7 @@ extern crate serde_derive;
 
 mod ruby_init;
 
+mod backtrace;
 mod profile;
 mod profile_serializer;
 mod ringbuffer;

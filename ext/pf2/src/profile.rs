@@ -1,8 +1,11 @@
-use std::collections::HashSet;
 use std::time::Instant;
+use std::{collections::HashSet, ptr::null_mut};
 
 use rb_sys::*;
 
+use backtrace_sys2::backtrace_create_state;
+
+use super::backtrace::{Backtrace, BacktraceState};
 use super::ringbuffer::Ringbuffer;
 use super::sample::Sample;
 
@@ -15,15 +18,27 @@ pub struct Profile {
     pub start_timestamp: Instant,
     pub samples: Vec<Sample>,
     pub temporary_sample_buffer: Ringbuffer,
+    pub backtrace_state: BacktraceState,
     known_values: HashSet<VALUE>,
 }
 
 impl Profile {
     pub fn new() -> Self {
+        let backtrace_state = unsafe {
+            let ptr = backtrace_create_state(
+                null_mut(),
+                1,
+                Some(Backtrace::backtrace_error_callback),
+                null_mut(),
+            );
+            BacktraceState::new(ptr)
+        };
+
         Self {
             start_timestamp: Instant::now(),
             samples: vec![],
             temporary_sample_buffer: Ringbuffer::new(DEFAULT_RINGBUFFER_CAPACITY),
+            backtrace_state,
             known_values: HashSet::new(),
         }
     }

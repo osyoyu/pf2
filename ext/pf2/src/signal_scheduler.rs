@@ -132,7 +132,7 @@ impl SignalScheduler {
             }
         };
 
-        let sample = Sample::capture(args.context_ruby_thread); // NOT async-signal-safe
+        let sample = Sample::capture(args.context_ruby_thread, &profile.backtrace_state); // NOT async-signal-safe
         if profile.temporary_sample_buffer.push(sample).is_err() {
             log::debug!("Temporary sample buffer full. Dropping sample.");
         }
