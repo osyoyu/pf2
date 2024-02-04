@@ -34,6 +34,8 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'rake-compiler'
   spec.add_dependency 'rb_sys', '~> 0.9.63'
 
+  spec.add_development_dependency 'minitest'
+
   # For more information and examples about making a new gem, check out our
   # guide at: https://bundler.io/guides/creating_gem.html
 end
