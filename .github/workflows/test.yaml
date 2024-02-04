@@ -1,0 +1,36 @@
+name: Run tests
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RB_SYS_CARGO_PROFILE: dev
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+
+    strategy:
+      matrix:
+        ruby-version: ['3.3']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+
+      - name: Build Gem
+        run: bundle exec rake compile
+
+      - name: Run tests (Ruby)
+        run: bundle exec rake test
+
+      - name: Run tests (Rust)
+        run: cargo test --verbose
