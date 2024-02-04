@@ -1,5 +1,5 @@
 def system_with_timeout(command, timeout)
-  pid = spawn(command, pgroup: true, in: "/dev/null", out: "/dev/null", err: "/dev/null")
+  pid = spawn(command, pgroup: true)
   pgid = Process.getpgid(pid)
   wait_thread = Process.detach(pid)
   if wait_thread.nil?
