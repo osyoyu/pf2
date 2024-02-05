@@ -8,6 +8,7 @@ Notable Capabilites
 
 - Can accurately track multiple Ruby Threads' activity
 - Sampling interval can be set based on per-Thread CPU usage
+- Can record native (C-level) stack traces side-by-side with Ruby traces
 
 Usage
 --------
