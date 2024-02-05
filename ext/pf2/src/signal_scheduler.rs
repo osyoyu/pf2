@@ -11,8 +11,9 @@ use crate::sample::Sample;
 
 use core::panic;
 use std::collections::HashSet;
-use std::ffi::{c_int, c_void, CString};
+use std::ffi::{c_int, c_void, CStr, CString};
 use std::mem::ManuallyDrop;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Duration;
@@ -47,18 +48,19 @@ impl SignalScheduler {
         unsafe {
             rb_scan_args(argc, argv, cstr!(":"), &kwargs);
         };
-        let mut kwargs_values: [VALUE; 3] = [Qnil.into(); 3];
+        let mut kwargs_values: [VALUE; 4] = [Qnil.into(); 4];
         unsafe {
             rb_get_kwargs(
                 kwargs,
                 [
                     rb_intern(cstr!("interval_ms")),
                     rb_intern(cstr!("threads")),
+                    rb_intern(cstr!("time_mode")),
                     rb_intern(cstr!("track_new_threads")),
                 ]
                 .as_mut_ptr(),
                 0,
-                3,
+                4,
                 kwargs_values.as_mut_ptr(),
             );
         };
@@ -79,8 +81,26 @@ impl SignalScheduler {
         } else {
             unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
         };
-        let track_new_threads: bool = if kwargs_values[2] != Qundef as VALUE {
-            RTEST(kwargs_values[2])
+        let time_mode: configuration::TimeMode = if kwargs_values[2] != Qundef as VALUE {
+            let specified_mode = unsafe {
+                let mut str = rb_funcall(kwargs_values[2], rb_intern(cstr!("to_s")), 0);
+                let ptr = rb_string_value_ptr(&mut str);
+                CStr::from_ptr(ptr).to_str().unwrap()
+            };
+            configuration::TimeMode::from_str(specified_mode).unwrap_or_else(|_| {
+                // Raise an ArgumentError
+                unsafe {
+                    rb_raise(
+                        rb_eArgError,
+                        cstr!("Invalid time mode. Valid values are 'cpu' and 'wall'."),
+                    )
+                }
+            })
+        } else {
+            configuration::TimeMode::CpuTime
+        };
+        let track_new_threads: bool = if kwargs_values[3] != Qundef as VALUE {
+            RTEST(kwargs_values[3])
         } else {
             false
         };
@@ -95,8 +115,8 @@ impl SignalScheduler {
 
         self.configuration = Some(Configuration {
             interval,
-            time_mode: TimeMode::CpuTime,
             target_ruby_threads,
+            time_mode,
             track_new_threads,
         });
 
