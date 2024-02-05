@@ -49,7 +49,19 @@ $ pf2 -o report.json my_program.pf2profile
 
 ### Configuration
 
-(TBD)
+Pf2 accepts the following configuration keys:
+
+```rb
+Pf2.start(
+  interval_ms: 49,        # Integer: The sampling interval in milliseconds (default: 49)
+  threads: [],            # Array<Thread>: A list of Ruby Threads to be tracked (default: `Thread.list`)
+  time_mode: :cpu,        # `:cpu` or `:wall`: The sampling timer's mode
+                          # (default: `:cpu` for SignalScheduler, `:wall` for TimerThreadScheduler)
+  track_new_threads: true # Boolean: Whether to automatically track Threads spawned after profiler start
+                          # (default: false)
+)
+```
+
 
 Overhead
 --------
