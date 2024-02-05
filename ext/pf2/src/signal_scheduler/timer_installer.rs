@@ -23,7 +23,6 @@ pub struct TimerInstaller {
 
 struct Internal {
     configuration: Configuration,
-    target_ruby_threads: HashSet<VALUE>,
     registered_pthread_ids: HashSet<libc::pthread_t>,
     kernel_thread_id_to_ruby_thread_map: HashMap<libc::pid_t, VALUE>,
     profile: Arc<RwLock<Profile>>,
@@ -34,14 +33,11 @@ impl TimerInstaller {
     // The callback should create a timer for the thread.
     pub fn install_timer_to_ruby_threads(
         configuration: Configuration,
-        ruby_threads: &HashSet<VALUE>,
         profile: Arc<RwLock<Profile>>,
-        track_new_threads: bool,
     ) {
         let registrar = Self {
             internal: Box::new(Mutex::new(Internal {
-                configuration,
-                target_ruby_threads: ruby_threads.clone(),
+                configuration: configuration.clone(),
                 registered_pthread_ids: HashSet::new(),
                 kernel_thread_id_to_ruby_thread_map: HashMap::new(),
                 profile,
@@ -60,7 +56,7 @@ impl TimerInstaller {
             rb_thread_create(Some(Self::do_nothing), null_mut());
         };
 
-        if track_new_threads {
+        if configuration.track_new_threads {
             unsafe {
                 rb_internal_thread_add_event_hook(
                     Some(Self::on_thread_start),
@@ -88,7 +84,11 @@ impl TimerInstaller {
 
         // Check if the current thread is a target Ruby Thread
         let current_ruby_thread: VALUE = unsafe { (*data).thread };
-        if !internal.target_ruby_threads.contains(&current_ruby_thread) {
+        if !internal
+            .configuration
+            .target_ruby_threads
+            .contains(&current_ruby_thread)
+        {
             return;
         }
 
@@ -129,7 +129,10 @@ impl TimerInstaller {
         let mut internal = internal.lock().unwrap();
 
         let current_ruby_thread: VALUE = unsafe { (*data).thread };
-        internal.target_ruby_threads.insert(current_ruby_thread);
+        internal
+            .configuration
+            .target_ruby_threads
+            .insert(current_ruby_thread);
     }
 
     // Creates a new POSIX timer which invocates sampling for the thread that called this function.
