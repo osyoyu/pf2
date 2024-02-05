@@ -43,13 +43,36 @@ impl SignalScheduler {
         }
     }
 
-    fn start(
-        &mut self,
-        _rbself: VALUE,
-        ruby_threads_rary: VALUE,
-        track_new_threads: VALUE,
-    ) -> VALUE {
-        let track_new_threads = RTEST(track_new_threads);
+    fn start(&mut self, argc: c_int, argv: *const VALUE, _rbself: VALUE) -> VALUE {
+        // Parse arguments
+        let kwargs: VALUE = Qnil.into();
+        unsafe {
+            rb_scan_args(argc, argv, cstr!(":"), &kwargs);
+        };
+        let mut kwargs_values: [VALUE; 2] = [Qnil.into(); 2];
+        unsafe {
+            rb_get_kwargs(
+                kwargs,
+                [
+                    rb_intern(cstr!("threads")),
+                    rb_intern(cstr!("track_new_threads")),
+                ]
+                .as_mut_ptr(),
+                0,
+                2,
+                kwargs_values.as_mut_ptr(),
+            );
+        };
+        let ruby_threads_rary: VALUE = if kwargs_values[0] != Qundef as VALUE {
+            kwargs_values[0]
+        } else {
+            unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
+        };
+        let track_new_threads: bool = if kwargs_values[1] != Qundef as VALUE {
+            RTEST(kwargs_values[1])
+        } else {
+            false
+        };
 
         let profile = Arc::new(RwLock::new(Profile::new()));
         self.start_profile_buffer_flusher_thread(&profile);
@@ -156,13 +179,9 @@ impl SignalScheduler {
 
     // Ruby Methods
 
-    pub unsafe extern "C" fn rb_start(
-        rbself: VALUE,
-        ruby_threads: VALUE,
-        track_new_threads: VALUE,
-    ) -> VALUE {
+    pub unsafe extern "C" fn rb_start(argc: c_int, argv: *const VALUE, rbself: VALUE) -> VALUE {
         let mut collector = unsafe { Self::get_struct_from(rbself) };
-        collector.start(rbself, ruby_threads, track_new_threads)
+        collector.start(argc, argv, rbself)
     }
 
     pub unsafe extern "C" fn rb_stop(rbself: VALUE) -> VALUE {

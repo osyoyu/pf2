@@ -1,6 +1,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::ffi::{c_void, CString};
+use std::ffi::{c_int, c_void, CString};
 use std::mem::ManuallyDrop;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,7 +37,28 @@ impl TimerThreadScheduler {
         }
     }
 
-    fn start(&mut self, _rbself: VALUE, ruby_threads: VALUE) -> VALUE {
+    fn start(&mut self, argc: c_int, argv: *const VALUE, _rbself: VALUE) -> VALUE {
+        // Parse arguments
+        let kwargs: VALUE = Qnil.into();
+        unsafe {
+            rb_scan_args(argc, argv, cstr!(":"), &kwargs);
+        };
+        let mut kwargs_values: [VALUE; 1] = [Qnil.into(); 1];
+        unsafe {
+            rb_get_kwargs(
+                kwargs,
+                [rb_intern(cstr!("threads"))].as_mut_ptr(),
+                0,
+                1,
+                kwargs_values.as_mut_ptr(),
+            );
+        };
+        let ruby_threads: VALUE = if kwargs_values[0] != Qundef as VALUE {
+            kwargs_values[0]
+        } else {
+            unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
+        };
+
         // Register threads
         let stored_threads = &mut self.ruby_threads.try_write().unwrap();
         unsafe {
@@ -165,9 +186,9 @@ impl TimerThreadScheduler {
     // Ruby Methods
 
     // SampleCollector.start
-    pub unsafe extern "C" fn rb_start(rbself: VALUE, ruby_threads: VALUE, _: VALUE) -> VALUE {
+    pub unsafe extern "C" fn rb_start(argc: c_int, argv: *const VALUE, rbself: VALUE) -> VALUE {
         let mut collector = Self::get_struct_from(rbself);
-        collector.start(rbself, ruby_threads)
+        collector.start(argc, argv, rbself)
     }
 
     // SampleCollector.stop

@@ -29,13 +29,13 @@ extern "C" fn Init_pf2() {
             rb_define_method(
                 rb_mPf2_SignalScheduler,
                 cstr!("start"),
-                Some(to_ruby_cfunc3(SignalScheduler::rb_start)),
-                2,
+                Some(to_ruby_cfunc_with_args(SignalScheduler::rb_start)),
+                -1,
             );
             rb_define_method(
                 rb_mPf2_SignalScheduler,
                 cstr!("stop"),
-                Some(to_ruby_cfunc1(SignalScheduler::rb_stop)),
+                Some(to_ruby_cfunc_with_no_args(SignalScheduler::rb_stop)),
                 0,
             );
         }
@@ -49,13 +49,13 @@ extern "C" fn Init_pf2() {
         rb_define_method(
             rb_mPf2_TimerThreadScheduler,
             cstr!("start"),
-            Some(to_ruby_cfunc3(TimerThreadScheduler::rb_start)),
-            2,
+            Some(to_ruby_cfunc_with_args(TimerThreadScheduler::rb_start)),
+            -1,
         );
         rb_define_method(
             rb_mPf2_TimerThreadScheduler,
             cstr!("stop"),
-            Some(to_ruby_cfunc1(TimerThreadScheduler::rb_stop)),
+            Some(to_ruby_cfunc_with_no_args(TimerThreadScheduler::rb_stop)),
             0,
         );
     }
