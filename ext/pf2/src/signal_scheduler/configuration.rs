@@ -1,9 +1,12 @@
-use std::{collections::HashSet, str::FromStr};
+use std::collections::HashSet;
+use std::str::FromStr;
+use std::time::Duration;
 
 use rb_sys::VALUE;
 
 #[derive(Clone, Debug)]
 pub struct Configuration {
+    pub interval: Duration,
     pub time_mode: TimeMode,
     pub target_ruby_threads: HashSet<VALUE>,
     pub track_new_threads: bool,

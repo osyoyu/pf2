@@ -18,6 +18,7 @@ use crate::util::*;
 #[derive(Clone, Debug)]
 pub struct TimerThreadScheduler {
     ruby_threads: Arc<RwLock<Vec<VALUE>>>,
+    interval: Option<Arc<Duration>>,
     profile: Option<Arc<RwLock<Profile>>>,
     stop_requested: Arc<AtomicBool>,
 }
@@ -32,6 +33,7 @@ impl TimerThreadScheduler {
     fn new() -> Self {
         TimerThreadScheduler {
             ruby_threads: Arc::new(RwLock::new(vec![])),
+            interval: None,
             profile: None,
             stop_requested: Arc::new(AtomicBool::new(false)),
         }
@@ -43,18 +45,30 @@ impl TimerThreadScheduler {
         unsafe {
             rb_scan_args(argc, argv, cstr!(":"), &kwargs);
         };
-        let mut kwargs_values: [VALUE; 1] = [Qnil.into(); 1];
+        let mut kwargs_values: [VALUE; 2] = [Qnil.into(); 2];
         unsafe {
             rb_get_kwargs(
                 kwargs,
-                [rb_intern(cstr!("threads"))].as_mut_ptr(),
+                [rb_intern(cstr!("interval_ms")), rb_intern(cstr!("threads"))].as_mut_ptr(),
                 0,
-                1,
+                2,
                 kwargs_values.as_mut_ptr(),
             );
         };
-        let threads: VALUE = if kwargs_values[0] != Qundef as VALUE {
-            kwargs_values[0]
+        let interval: Duration = if kwargs_values[0] != Qundef as VALUE {
+            let interval_ms = unsafe { rb_num2long(kwargs_values[0]) };
+            Duration::from_millis(interval_ms.try_into().unwrap_or_else(|_| {
+                eprintln!(
+                    "[Pf2] Warning: Specified interval ({}) is not valid. Using default value (49ms).",
+                    interval_ms
+                );
+                49
+            }))
+        } else {
+            Duration::from_millis(49)
+        };
+        let threads: VALUE = if kwargs_values[1] != Qundef as VALUE {
+            kwargs_values[1]
         } else {
             unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
         };
@@ -67,6 +81,7 @@ impl TimerThreadScheduler {
             }
         }
 
+        self.interval = Some(Arc::new(interval));
         self.ruby_threads = Arc::new(RwLock::new(target_ruby_threads.into_iter().collect()));
 
         Qnil.into()
@@ -79,6 +94,7 @@ impl TimerThreadScheduler {
 
         // Start monitoring thread
         let stop_requested = Arc::clone(&self.stop_requested);
+        let interval = Arc::clone(self.interval.as_ref().unwrap());
         let postponed_job_args: Box<PostponedJobArgs> = Box::new(PostponedJobArgs {
             ruby_threads: Arc::clone(&self.ruby_threads),
             profile: Arc::clone(&profile),
@@ -90,7 +106,9 @@ impl TimerThreadScheduler {
                 Box::into_raw(postponed_job_args) as *mut c_void, // FIXME: leak
             )
         };
-        thread::spawn(move || Self::thread_main_loop(stop_requested, postponed_job_handle));
+        thread::spawn(move || {
+            Self::thread_main_loop(stop_requested, interval, postponed_job_handle)
+        });
 
         self.profile = Some(profile);
 
@@ -99,6 +117,7 @@ impl TimerThreadScheduler {
 
     fn thread_main_loop(
         stop_requested: Arc<AtomicBool>,
+        interval: Arc<Duration>,
         postponed_job_handle: rb_postponed_job_handle_t,
     ) {
         loop {
@@ -108,8 +127,8 @@ impl TimerThreadScheduler {
             unsafe {
                 rb_postponed_job_trigger(postponed_job_handle);
             }
-            // sleep for 50 ms
-            thread::sleep(Duration::from_millis(50));
+
+            thread::sleep(*interval);
         }
     }
 

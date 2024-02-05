@@ -165,7 +165,7 @@ impl TimerInstaller {
         // Pass required args to the signal handler
         sigevent.sigev_value.sival_ptr = Box::into_raw(signal_handler_args) as *mut c_void;
 
-        // Create and configure timer to fire every 10 ms of CPU time
+        // Create and configure timer to fire every _interval_ ms of CPU time
         let mut timer: libc::timer_t = unsafe { mem::zeroed() };
         match configuration.time_mode {
             crate::signal_scheduler::TimeMode::CpuTime => {
@@ -180,16 +180,25 @@ impl TimerInstaller {
                 todo!("WallTime is not supported yet");
             }
         };
-        let mut its: libc::itimerspec = unsafe { mem::zeroed() };
-        its.it_interval.tv_sec = 0;
-        its.it_interval.tv_nsec = 10_000_000; // 10 ms
-        its.it_value.tv_sec = 0;
-        its.it_value.tv_nsec = 10_000_000;
-        let err = unsafe { libc::timer_settime(timer, 0, &its, null_mut()) };
+        let itimerspec = Self::duration_to_itimerspec(&configuration.interval);
+        let err = unsafe { libc::timer_settime(timer, 0, &itimerspec, null_mut()) };
         if err != 0 {
             panic!("timer_settime failed: {}", err);
         }
 
         log::debug!("timer registered for thread {}", current_pthread_id);
+    }
+
+    fn duration_to_itimerspec(duration: &std::time::Duration) -> libc::itimerspec {
+        let nanos = duration.as_nanos();
+        let seconds_part: i64 = (nanos / 1_000_000_000).try_into().unwrap();
+        let nanos_part: i64 = (nanos % 1_000_000_000).try_into().unwrap();
+
+        let mut its: libc::itimerspec = unsafe { mem::zeroed() };
+        its.it_interval.tv_sec = seconds_part;
+        its.it_interval.tv_nsec = nanos_part;
+        its.it_value.tv_sec = seconds_part;
+        its.it_value.tv_nsec = nanos_part;
+        its
     }
 }
