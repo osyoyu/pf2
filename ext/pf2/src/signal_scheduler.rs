@@ -47,27 +47,40 @@ impl SignalScheduler {
         unsafe {
             rb_scan_args(argc, argv, cstr!(":"), &kwargs);
         };
-        let mut kwargs_values: [VALUE; 2] = [Qnil.into(); 2];
+        let mut kwargs_values: [VALUE; 3] = [Qnil.into(); 3];
         unsafe {
             rb_get_kwargs(
                 kwargs,
                 [
+                    rb_intern(cstr!("interval_ms")),
                     rb_intern(cstr!("threads")),
                     rb_intern(cstr!("track_new_threads")),
                 ]
                 .as_mut_ptr(),
                 0,
-                2,
+                3,
                 kwargs_values.as_mut_ptr(),
             );
         };
-        let threads: VALUE = if kwargs_values[0] != Qundef as VALUE {
-            kwargs_values[0]
+        let interval: Duration = if kwargs_values[0] != Qundef as VALUE {
+            let interval_ms = unsafe { rb_num2long(kwargs_values[0]) };
+            Duration::from_millis(interval_ms.try_into().unwrap_or_else(|_| {
+                eprintln!(
+                    "[Pf2] Warning: Specified interval ({}) is not valid. Using default value (49ms).",
+                    interval_ms
+                );
+                49
+            }))
+        } else {
+            Duration::from_millis(49)
+        };
+        let threads: VALUE = if kwargs_values[1] != Qundef as VALUE {
+            kwargs_values[1]
         } else {
             unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
         };
-        let track_new_threads: bool = if kwargs_values[1] != Qundef as VALUE {
-            RTEST(kwargs_values[1])
+        let track_new_threads: bool = if kwargs_values[2] != Qundef as VALUE {
+            RTEST(kwargs_values[2])
         } else {
             false
         };
@@ -81,6 +94,7 @@ impl SignalScheduler {
         }
 
         self.configuration = Some(Configuration {
+            interval,
             time_mode: TimeMode::CpuTime,
             target_ruby_threads,
             track_new_threads,
