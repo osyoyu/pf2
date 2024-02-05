@@ -37,7 +37,7 @@ impl TimerThreadScheduler {
         }
     }
 
-    fn start(&mut self, argc: c_int, argv: *const VALUE, _rbself: VALUE) -> VALUE {
+    fn initialize(&mut self, argc: c_int, argv: *const VALUE, _rbself: VALUE) -> VALUE {
         // Parse arguments
         let kwargs: VALUE = Qnil.into();
         unsafe {
@@ -53,20 +53,26 @@ impl TimerThreadScheduler {
                 kwargs_values.as_mut_ptr(),
             );
         };
-        let ruby_threads: VALUE = if kwargs_values[0] != Qundef as VALUE {
+        let threads: VALUE = if kwargs_values[0] != Qundef as VALUE {
             kwargs_values[0]
         } else {
             unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
         };
 
-        // Register threads
-        let stored_threads = &mut self.ruby_threads.try_write().unwrap();
+        let mut target_ruby_threads = Vec::new();
         unsafe {
-            for i in 0..RARRAY_LEN(ruby_threads) {
-                stored_threads.push(rb_ary_entry(ruby_threads, i));
+            for i in 0..RARRAY_LEN(threads) {
+                let ruby_thread: VALUE = rb_ary_entry(threads, i);
+                target_ruby_threads.push(ruby_thread);
             }
         }
 
+        self.ruby_threads = Arc::new(RwLock::new(target_ruby_threads.into_iter().collect()));
+
+        Qnil.into()
+    }
+
+    fn start(&mut self, _rbself: VALUE) -> VALUE {
         // Create Profile
         let profile = Arc::new(RwLock::new(Profile::new()));
         self.start_profile_buffer_flusher_thread(&profile);
@@ -185,10 +191,19 @@ impl TimerThreadScheduler {
 
     // Ruby Methods
 
-    // SampleCollector.start
-    pub unsafe extern "C" fn rb_start(argc: c_int, argv: *const VALUE, rbself: VALUE) -> VALUE {
+    pub unsafe extern "C" fn rb_initialize(
+        argc: c_int,
+        argv: *const VALUE,
+        rbself: VALUE,
+    ) -> VALUE {
         let mut collector = Self::get_struct_from(rbself);
-        collector.start(argc, argv, rbself)
+        collector.initialize(argc, argv, rbself)
+    }
+
+    // SampleCollector.start
+    pub unsafe extern "C" fn rb_start(rbself: VALUE) -> VALUE {
+        let mut collector = Self::get_struct_from(rbself);
+        collector.start(rbself)
     }
 
     // SampleCollector.stop

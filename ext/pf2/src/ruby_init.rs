@@ -54,9 +54,15 @@ extern "C" fn Init_pf2() {
         );
         rb_define_method(
             rb_mPf2_TimerThreadScheduler,
-            cstr!("start"),
-            Some(to_ruby_cfunc_with_args(TimerThreadScheduler::rb_start)),
+            cstr!("initialize"),
+            Some(to_ruby_cfunc_with_args(TimerThreadScheduler::rb_initialize)),
             -1,
+        );
+        rb_define_method(
+            rb_mPf2_TimerThreadScheduler,
+            cstr!("start"),
+            Some(to_ruby_cfunc_with_no_args(TimerThreadScheduler::rb_start)),
+            0,
         );
         rb_define_method(
             rb_mPf2_TimerThreadScheduler,
