@@ -13,16 +13,13 @@ module Pf2
     end
   end
 
-  def self.default_scheduler
-    @@default_scheduler ||= default_scheduler_class.new
-  end
-
   def self.start(...)
-    default_scheduler.start(...)
+    @@default_scheduler = default_scheduler_class.new(...)
+    @@default_scheduler.start
   end
 
   def self.stop(...)
-    default_scheduler.stop(...)
+    @@default_scheduler.stop(...)
   end
 
   def self.profile(&block)

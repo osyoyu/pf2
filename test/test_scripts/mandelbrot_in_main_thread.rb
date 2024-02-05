@@ -12,6 +12,6 @@ def takeuchi(x, y, z)
   end
 end
 
-Pf2.start([Thread.current], false)
+Pf2.start(threads: [Thread.current])
 takeuchi(14, 10, 1)
 Pf2.stop
