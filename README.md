@@ -17,11 +17,10 @@ Usage
 Pf2 will collect samples every 10 ms of wall time by default.
 
 ```ruby
-# Specify Ruby Threads to track in the first argument.
-# New Ruby Threads will be tracked if the second argument is true.
-Pf2.start([Thread.current], false)
-your_code_here() # will be profiled
-Thread.new { threaded_code() } # will also be profiled if second argument is true
+# Threads in `threads` will be tracked
+Pf2.start(threads: [Thread.current])
+
+your_code_here
 
 # Stop profiling and save the profile for visualization
 profile = Pf2.stop

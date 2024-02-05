@@ -13,10 +13,10 @@ pub(crate) use cstr;
 pub type RubyCFunc = unsafe extern "C" fn() -> VALUE;
 
 // TODO: rewrite as macro
-pub fn to_ruby_cfunc1<T>(f: unsafe extern "C" fn(T) -> VALUE) -> RubyCFunc {
+pub fn to_ruby_cfunc_with_no_args<T>(f: unsafe extern "C" fn(T) -> VALUE) -> RubyCFunc {
     unsafe { transmute::<unsafe extern "C" fn(T) -> VALUE, RubyCFunc>(f) }
 }
-pub fn to_ruby_cfunc3<T, U, V>(f: unsafe extern "C" fn(T, U, V) -> VALUE) -> RubyCFunc {
+pub fn to_ruby_cfunc_with_args<T, U, V>(f: unsafe extern "C" fn(T, U, V) -> VALUE) -> RubyCFunc {
     unsafe { transmute::<unsafe extern "C" fn(T, U, V) -> VALUE, RubyCFunc>(f) }
 }
 

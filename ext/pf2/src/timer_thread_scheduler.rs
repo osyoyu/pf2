@@ -1,6 +1,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::ffi::{c_void, CString};
+use std::ffi::{c_int, c_void, CString};
 use std::mem::ManuallyDrop;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,15 +37,42 @@ impl TimerThreadScheduler {
         }
     }
 
-    fn start(&mut self, _rbself: VALUE, ruby_threads: VALUE) -> VALUE {
-        // Register threads
-        let stored_threads = &mut self.ruby_threads.try_write().unwrap();
+    fn initialize(&mut self, argc: c_int, argv: *const VALUE, _rbself: VALUE) -> VALUE {
+        // Parse arguments
+        let kwargs: VALUE = Qnil.into();
         unsafe {
-            for i in 0..RARRAY_LEN(ruby_threads) {
-                stored_threads.push(rb_ary_entry(ruby_threads, i));
+            rb_scan_args(argc, argv, cstr!(":"), &kwargs);
+        };
+        let mut kwargs_values: [VALUE; 1] = [Qnil.into(); 1];
+        unsafe {
+            rb_get_kwargs(
+                kwargs,
+                [rb_intern(cstr!("threads"))].as_mut_ptr(),
+                0,
+                1,
+                kwargs_values.as_mut_ptr(),
+            );
+        };
+        let threads: VALUE = if kwargs_values[0] != Qundef as VALUE {
+            kwargs_values[0]
+        } else {
+            unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
+        };
+
+        let mut target_ruby_threads = Vec::new();
+        unsafe {
+            for i in 0..RARRAY_LEN(threads) {
+                let ruby_thread: VALUE = rb_ary_entry(threads, i);
+                target_ruby_threads.push(ruby_thread);
             }
         }
 
+        self.ruby_threads = Arc::new(RwLock::new(target_ruby_threads.into_iter().collect()));
+
+        Qnil.into()
+    }
+
+    fn start(&mut self, _rbself: VALUE) -> VALUE {
         // Create Profile
         let profile = Arc::new(RwLock::new(Profile::new()));
         self.start_profile_buffer_flusher_thread(&profile);
@@ -164,10 +191,19 @@ impl TimerThreadScheduler {
 
     // Ruby Methods
 
-    // SampleCollector.start
-    pub unsafe extern "C" fn rb_start(rbself: VALUE, ruby_threads: VALUE, _: VALUE) -> VALUE {
+    pub unsafe extern "C" fn rb_initialize(
+        argc: c_int,
+        argv: *const VALUE,
+        rbself: VALUE,
+    ) -> VALUE {
         let mut collector = Self::get_struct_from(rbself);
-        collector.start(rbself, ruby_threads)
+        collector.initialize(argc, argv, rbself)
+    }
+
+    // SampleCollector.start
+    pub unsafe extern "C" fn rb_start(rbself: VALUE) -> VALUE {
+        let mut collector = Self::get_struct_from(rbself);
+        collector.start(rbself)
     }
 
     // SampleCollector.stop

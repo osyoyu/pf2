@@ -24,7 +24,7 @@ use crate::util::*;
 
 #[derive(Debug)]
 pub struct SignalScheduler {
-    configuration: configuration::Configuration,
+    configuration: Option<configuration::Configuration>,
     profile: Option<Arc<RwLock<Profile>>>,
 }
 
@@ -36,37 +36,67 @@ pub struct SignalHandlerArgs {
 impl SignalScheduler {
     fn new() -> Self {
         Self {
-            configuration: Configuration {
-                time_mode: TimeMode::CpuTime,
-            },
+            configuration: None,
             profile: None,
         }
     }
 
-    fn start(
-        &mut self,
-        _rbself: VALUE,
-        ruby_threads_rary: VALUE,
-        track_new_threads: VALUE,
-    ) -> VALUE {
-        let track_new_threads = RTEST(track_new_threads);
+    fn initialize(&mut self, argc: c_int, argv: *const VALUE, _rbself: VALUE) -> VALUE {
+        // Parse arguments
+        let kwargs: VALUE = Qnil.into();
+        unsafe {
+            rb_scan_args(argc, argv, cstr!(":"), &kwargs);
+        };
+        let mut kwargs_values: [VALUE; 2] = [Qnil.into(); 2];
+        unsafe {
+            rb_get_kwargs(
+                kwargs,
+                [
+                    rb_intern(cstr!("threads")),
+                    rb_intern(cstr!("track_new_threads")),
+                ]
+                .as_mut_ptr(),
+                0,
+                2,
+                kwargs_values.as_mut_ptr(),
+            );
+        };
+        let threads: VALUE = if kwargs_values[0] != Qundef as VALUE {
+            kwargs_values[0]
+        } else {
+            unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
+        };
+        let track_new_threads: bool = if kwargs_values[1] != Qundef as VALUE {
+            RTEST(kwargs_values[1])
+        } else {
+            false
+        };
 
+        let mut target_ruby_threads = HashSet::new();
+        unsafe {
+            for i in 0..RARRAY_LEN(threads) {
+                let ruby_thread: VALUE = rb_ary_entry(threads, i);
+                target_ruby_threads.insert(ruby_thread);
+            }
+        }
+
+        self.configuration = Some(Configuration {
+            time_mode: TimeMode::CpuTime,
+            target_ruby_threads,
+            track_new_threads,
+        });
+
+        Qnil.into()
+    }
+
+    fn start(&mut self, _rbself: VALUE) -> VALUE {
         let profile = Arc::new(RwLock::new(Profile::new()));
         self.start_profile_buffer_flusher_thread(&profile);
         self.install_signal_handler();
 
-        let mut target_ruby_threads = HashSet::new();
-        unsafe {
-            for i in 0..RARRAY_LEN(ruby_threads_rary) {
-                let ruby_thread: VALUE = rb_ary_entry(ruby_threads_rary, i);
-                target_ruby_threads.insert(ruby_thread);
-            }
-        }
         TimerInstaller::install_timer_to_ruby_threads(
-            self.configuration.clone(),
-            &target_ruby_threads,
+            self.configuration.as_ref().unwrap().clone(), // FIXME: don't clone
             Arc::clone(&profile),
-            track_new_threads,
         );
 
         self.profile = Some(profile);
@@ -156,13 +186,18 @@ impl SignalScheduler {
 
     // Ruby Methods
 
-    pub unsafe extern "C" fn rb_start(
+    pub unsafe extern "C" fn rb_initialize(
+        argc: c_int,
+        argv: *const VALUE,
         rbself: VALUE,
-        ruby_threads: VALUE,
-        track_new_threads: VALUE,
     ) -> VALUE {
         let mut collector = unsafe { Self::get_struct_from(rbself) };
-        collector.start(rbself, ruby_threads, track_new_threads)
+        collector.initialize(argc, argv, rbself)
+    }
+
+    pub unsafe extern "C" fn rb_start(rbself: VALUE) -> VALUE {
+        let mut collector = unsafe { Self::get_struct_from(rbself) };
+        collector.start(rbself)
     }
 
     pub unsafe extern "C" fn rb_stop(rbself: VALUE) -> VALUE {
