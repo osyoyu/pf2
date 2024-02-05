@@ -167,19 +167,14 @@ impl TimerInstaller {
 
         // Create and configure timer to fire every _interval_ ms of CPU time
         let mut timer: libc::timer_t = unsafe { mem::zeroed() };
-        match configuration.time_mode {
-            crate::signal_scheduler::TimeMode::CpuTime => {
-                let err = unsafe {
-                    libc::timer_create(libc::CLOCK_THREAD_CPUTIME_ID, &mut sigevent, &mut timer)
-                };
-                if err != 0 {
-                    panic!("timer_create failed: {}", err);
-                }
-            }
-            crate::signal_scheduler::TimeMode::WallTime => {
-                todo!("WallTime is not supported yet");
-            }
+        let clockid = match configuration.time_mode {
+            crate::signal_scheduler::TimeMode::CpuTime => libc::CLOCK_THREAD_CPUTIME_ID,
+            crate::signal_scheduler::TimeMode::WallTime => libc::CLOCK_MONOTONIC,
         };
+        let err = unsafe { libc::timer_create(clockid, &mut sigevent, &mut timer) };
+        if err != 0 {
+            panic!("timer_create failed: {}", err);
+        }
         let itimerspec = Self::duration_to_itimerspec(&configuration.interval);
         let err = unsafe { libc::timer_settime(timer, 0, &itimerspec, null_mut()) };
         if err != 0 {

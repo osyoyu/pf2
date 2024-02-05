@@ -1,6 +1,6 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::ffi::{c_int, c_void, CString};
+use std::ffi::{c_int, c_void, CStr, CString};
 use std::mem::ManuallyDrop;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -45,13 +45,18 @@ impl TimerThreadScheduler {
         unsafe {
             rb_scan_args(argc, argv, cstr!(":"), &kwargs);
         };
-        let mut kwargs_values: [VALUE; 2] = [Qnil.into(); 2];
+        let mut kwargs_values: [VALUE; 3] = [Qnil.into(); 3];
         unsafe {
             rb_get_kwargs(
                 kwargs,
-                [rb_intern(cstr!("interval_ms")), rb_intern(cstr!("threads"))].as_mut_ptr(),
+                [
+                    rb_intern(cstr!("interval_ms")),
+                    rb_intern(cstr!("threads")),
+                    rb_intern(cstr!("time_mode")),
+                ]
+                .as_mut_ptr(),
                 0,
-                2,
+                3,
                 kwargs_values.as_mut_ptr(),
             );
         };
@@ -72,6 +77,22 @@ impl TimerThreadScheduler {
         } else {
             unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
         };
+        if kwargs_values[2] != Qundef as VALUE {
+            let specified_mode = unsafe {
+                let mut str = rb_funcall(kwargs_values[2], rb_intern(cstr!("to_s")), 0);
+                let ptr = rb_string_value_ptr(&mut str);
+                CStr::from_ptr(ptr).to_str().unwrap()
+            };
+            if specified_mode != "wall" {
+                // Raise an ArgumentError
+                unsafe {
+                    rb_raise(
+                        rb_eArgError,
+                        cstr!("TimerThreadScheduler only supports :wall mode."),
+                    )
+                }
+            }
+        }
 
         let mut target_ruby_threads = Vec::new();
         unsafe {
