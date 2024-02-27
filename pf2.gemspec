@@ -33,6 +33,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'rake-compiler'
   spec.add_dependency 'rb_sys', '~> 0.9.63'
+  spec.add_dependency 'webrick'
 
   spec.add_development_dependency 'minitest'
 

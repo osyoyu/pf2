@@ -4,6 +4,7 @@ PATH
     pf2 (0.4.0)
       rake-compiler
       rb_sys (~> 0.9.63)
+      webrick
 
 GEM
   remote: https://rubygems.org/
@@ -13,6 +14,7 @@ GEM
     rake-compiler (1.2.5)
       rake
     rb_sys (0.9.82)
+    webrick (1.8.1)
 
 PLATFORMS
   x86_64-linux
