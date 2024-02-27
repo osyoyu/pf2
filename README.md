@@ -13,6 +13,19 @@ Notable Capabilites
 Usage
 --------
 
+### Quickstart
+
+Run your Ruby program through `pf2 serve`.
+Wait a while until Pf2 collects profiles (or until the target program exits), then open the displayed link for visualization.
+
+```
+$ pf2 serve -- ruby target.rb
+[Pf2] Listening on localhost:51502.
+[Pf2] Open https://profiler.firefox.com/from-url/http%3A%2F%2Flocalhost%3A51502%2Fprofile for visualization.
+
+I'm the target program!
+```
+
 ### Profiling
 
 Pf2 will collect samples every 10 ms of wall time by default.
