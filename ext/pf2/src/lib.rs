@@ -13,3 +13,5 @@ mod sample;
 mod signal_scheduler;
 mod timer_thread_scheduler;
 mod util;
+
+mod ruby_internal_apis;
