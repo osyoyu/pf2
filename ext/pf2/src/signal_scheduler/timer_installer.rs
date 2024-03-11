@@ -12,10 +12,12 @@ use crate::profile::Profile;
 use crate::ruby_internal_apis::rb_thread_getcpuclockid;
 use crate::signal_scheduler::{cstr, SignalHandlerArgs};
 
+#[derive(Debug)]
 pub struct TimerInstaller {
     internal: Box<Mutex<Internal>>,
 }
 
+#[derive(Debug)]
 struct Internal {
     configuration: Configuration,
     pub profile: Arc<RwLock<Profile>>,
@@ -35,9 +37,11 @@ impl TimerInstaller {
             })),
         };
 
-        for ruby_thread in configuration.target_ruby_threads.iter() {
-            let ruby_thread: VALUE = *ruby_thread;
-            registrar.register_timer_to_ruby_thread(ruby_thread);
+        if let Ok(internal) = registrar.internal.try_lock() {
+            for ruby_thread in configuration.target_ruby_threads.iter() {
+                let ruby_thread: VALUE = *ruby_thread;
+                internal.register_timer_to_ruby_thread(ruby_thread, false);
+            }
         }
 
         if configuration.track_new_threads {
@@ -52,7 +56,7 @@ impl TimerInstaller {
         }
     }
 
-    // Thread resume callback
+    // Thread start callback
     unsafe extern "C" fn on_thread_start(
         _flag: rb_event_flag_t,
         data: *const rb_internal_thread_event_data,
@@ -61,46 +65,55 @@ impl TimerInstaller {
         // The SignalScheduler (as a Ruby obj) should be passed as custom_data
         let internal =
             unsafe { ManuallyDrop::new(Box::from_raw(custom_data as *mut Mutex<Internal>)) };
-        let mut internal = internal.lock().unwrap();
-
-        let current_ruby_thread: VALUE = unsafe { (*data).thread };
-        internal
-            .configuration
-            .target_ruby_threads
-            .insert(current_ruby_thread);
+        let internal = internal.lock().unwrap();
+        let ruby_thread: VALUE = unsafe { (*data).thread };
+        internal.register_timer_to_ruby_thread(ruby_thread, true);
     }
+}
 
-    fn register_timer_to_ruby_thread(&self, ruby_thread: VALUE) {
-        let internal = self.internal.lock().unwrap();
-
+impl Internal {
+    fn register_timer_to_ruby_thread(&self, ruby_thread: VALUE, assume_current_thread: bool) {
         // NOTE: This Box is never dropped
         let signal_handler_args = Box::new(SignalHandlerArgs {
-            profile: Arc::clone(&internal.profile),
+            profile: Arc::clone(&self.profile),
             context_ruby_thread: ruby_thread,
         });
+
+        let kernel_thread_id: i32 = if assume_current_thread {
+            unsafe { libc::syscall(libc::SYS_gettid).try_into().unwrap() }
+        } else {
+            // rb_funcall deadlocks when called within a THREAD_EVENT_STARTED hook
+            i32::try_from(unsafe {
+                rb_num2int(rb_funcall(
+                    ruby_thread,
+                    rb_intern(cstr!("native_thread_id")), // kernel thread ID
+                    0,
+                ))
+            })
+            .unwrap()
+        };
 
         // Create a signal event
         let mut sigevent: libc::sigevent = unsafe { mem::zeroed() };
         // Note: SIGEV_THREAD_ID is Linux-specific. In other platforms, we would need to
-        // "tranpoline" the signal as any pthread can receive the signal.
+        // "trampoline" the signal as any pthread can receive the signal.
         sigevent.sigev_notify = libc::SIGEV_THREAD_ID;
-        sigevent.sigev_notify_thread_id = i32::try_from(unsafe {
-            rb_num2int(rb_funcall(
-                ruby_thread,
-                rb_intern(cstr!("native_thread_id")), // kernel thread ID
-                0,
-            ))
-        })
-        .unwrap();
+        sigevent.sigev_notify_thread_id = kernel_thread_id;
         sigevent.sigev_signo = libc::SIGALRM;
         // Pass required args to the signal handler
         sigevent.sigev_value.sival_ptr = Box::into_raw(signal_handler_args) as *mut c_void;
 
         // Create and configure timer to fire every _interval_ ms of CPU time
         let mut timer: libc::timer_t = unsafe { mem::zeroed() };
-        let clockid = match internal.configuration.time_mode {
+        let clockid = match self.configuration.time_mode {
             crate::signal_scheduler::TimeMode::CpuTime => unsafe {
-                rb_thread_getcpuclockid(ruby_thread)
+                if assume_current_thread {
+                    // rb_thread_t->nt->thread_id isn't assigned yet on the
+                    // timing of THREAD_EVENT_STARTED hook
+                    libc::CLOCK_THREAD_CPUTIME_ID
+                } else {
+                    rb_thread_getcpuclockid(ruby_thread)
+                }
             },
             crate::signal_scheduler::TimeMode::WallTime => libc::CLOCK_MONOTONIC,
         };
@@ -108,7 +121,7 @@ impl TimerInstaller {
         if err != 0 {
             panic!("timer_create failed: {}", err);
         }
-        let itimerspec = Self::duration_to_itimerspec(&internal.configuration.interval);
+        let itimerspec = Self::duration_to_itimerspec(&self.configuration.interval);
         let err = unsafe { libc::timer_settime(timer, 0, &itimerspec, null_mut()) };
         if err != 0 {
             panic!("timer_settime failed: {}", err);
