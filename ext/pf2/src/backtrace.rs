@@ -42,6 +42,7 @@ impl Backtrace {
         }
     }
 
+    #[allow(dead_code)] // TODO: Remove this
     pub fn backtrace_pcinfo<F>(
         state: &BacktraceState,
         pc: usize,
