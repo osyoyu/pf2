@@ -30,14 +30,14 @@ impl TimerInstaller {
         configuration: Configuration,
         profile: Arc<RwLock<Profile>>,
     ) {
-        let registrar = Self {
+        let installer = Self {
             internal: Box::new(Mutex::new(Internal {
                 configuration: configuration.clone(),
                 profile,
             })),
         };
 
-        if let Ok(internal) = registrar.internal.try_lock() {
+        if let Ok(internal) = installer.internal.try_lock() {
             for ruby_thread in configuration.target_ruby_threads.iter() {
                 let ruby_thread: VALUE = *ruby_thread;
                 internal.register_timer_to_ruby_thread(ruby_thread, false);
@@ -45,7 +45,7 @@ impl TimerInstaller {
         }
 
         if configuration.track_new_threads {
-            let ptr = Box::into_raw(registrar.internal);
+            let ptr = Box::into_raw(installer.internal);
             unsafe {
                 rb_internal_thread_add_event_hook(
                     Some(Self::on_thread_start),
