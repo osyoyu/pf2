@@ -62,6 +62,7 @@ struct FrameTableEntry {
     id: FrameTableId,
     entry_type: FrameTableEntryType,
     full_label: String,
+    address: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -75,6 +76,11 @@ enum FrameTableEntryType {
 struct ProfileSample {
     elapsed_ns: u128,
     stack_tree_id: StackTreeNodeId,
+}
+
+struct NativeFunctionFrame {
+    pub symbol_name: String,
+    pub address: Option<usize>,
 }
 
 impl ProfileSerializer {
@@ -92,49 +98,43 @@ impl ProfileSerializer {
 
                 // Process C-level stack
 
-                // A vec to keep the "programmer's" C stack trace.
-                // A single PC may be mapped to multiple inlined frames,
-                // so we keep the expanded stack frame in this Vec.
-                let mut c_stack: Vec<String> = vec![];
+                let mut c_stack: Vec<NativeFunctionFrame> = vec![];
+                // Rebuild the original backtrace (including inlined functions) from the PC.
                 for i in 0..sample.c_backtrace_pcs[0] {
                     let pc = sample.c_backtrace_pcs[i + 1];
                     Backtrace::backtrace_syminfo(
                         &profile.backtrace_state,
                         pc,
-                        |_pc: usize, symname: *const c_char, _symval: usize, _symsize: usize| {
+                        |_pc: usize, symname: *const c_char, symval: usize, _symsize: usize| {
                             if symname.is_null() {
-                                c_stack.push("(no symbol information)".to_owned());
+                                c_stack.push(NativeFunctionFrame {
+                                    symbol_name: "(no symbol information)".to_owned(),
+                                    address: None,
+                                });
                             } else {
-                                c_stack.push(CStr::from_ptr(symname).to_str().unwrap().to_owned());
+                                c_stack.push(NativeFunctionFrame {
+                                    symbol_name: CStr::from_ptr(symname)
+                                        .to_str()
+                                        .unwrap()
+                                        .to_owned(),
+                                    address: Some(symval),
+                                });
                             }
                         },
                         Some(Backtrace::backtrace_error_callback),
                     );
                 }
-
-                // Strip the C stack trace:
-                // - Remove Pf2-related frames which are always captured
-                // - Remove frames below rb_vm_exec
-                let mut reached_ruby = false;
-                c_stack.retain(|frame| {
-                    if reached_ruby {
-                        return false;
-                    }
-                    if frame.contains("pf2") {
-                        return false;
-                    }
-                    if frame.contains("rb_vm_exec") || frame.contains("vm_call_cfunc_with_frame") {
-                        reached_ruby = true;
-                        return false;
-                    }
-                    true
-                });
-
                 for frame in c_stack.iter() {
+                    if frame.symbol_name.contains("pf2") {
+                        // Skip Pf2-related frames
+                        continue;
+                    }
+
                     merged_stack.push(FrameTableEntry {
-                        id: calculate_id_for_c_frame(frame),
+                        id: calculate_id_for_c_frame(&frame.symbol_name),
                         entry_type: FrameTableEntryType::Native,
-                        full_label: frame.to_string(),
+                        full_label: frame.symbol_name.clone(),
+                        address: frame.address,
                     });
                 }
 
@@ -143,6 +143,19 @@ impl ProfileSerializer {
                 let ruby_stack_depth = sample.line_count;
                 for i in 0..ruby_stack_depth {
                     let frame: VALUE = sample.frames[i as usize];
+                    let address: Option<usize> = {
+                        let cme = frame
+                            as *mut crate::ruby_internal_apis::rb_callable_method_entry_struct;
+                        let cme = &*cme;
+
+                        if (*(cme.def)).type_ == 1 {
+                            // The cme is a Cfunc
+                            Some((*(cme.def)).cfunc.func as usize)
+                        } else {
+                            // The cme is an ISeq (Ruby code) or some other type
+                            None
+                        }
+                    };
                     merged_stack.push(FrameTableEntry {
                         id: frame,
                         entry_type: FrameTableEntryType::Ruby,
@@ -152,6 +165,7 @@ impl ProfileSerializer {
                         .to_str()
                         .unwrap()
                         .to_owned(),
+                        address,
                     });
                 }
 

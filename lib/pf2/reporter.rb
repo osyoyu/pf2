@@ -71,6 +71,8 @@ module Pf2
       end
 
       def emit
+        x = weave_native_stack(@thread[:stack_tree])
+        @thread[:stack_tree] = x
         func_table = build_func_table
         frame_table = build_frame_table
         stack_table = build_stack_table(func_table, frame_table)
@@ -147,7 +149,7 @@ module Pf2
         }
 
         @thread[:frames].each.with_index do |(id, frame), i|
-          ret[:address] << nil
+          ret[:address] << frame[:address].to_s
           ret[:category] << 1
           ret[:subcategory] << 1
           ret[:func] << i # TODO
@@ -193,6 +195,105 @@ module Pf2
 
         ret[:length] = ret[:name].length
         ret
+      end
+
+      # "Weave" the native stack into the Ruby stack.
+      #
+      # Strategy:
+      # - Split the stack into Ruby and Native parts
+      # - Start from the root of the Native stack
+      # - Dig in to the native stack until we hit a rb_vm_exec(), which marks a call into Ruby code
+      # - Switch to Ruby stack. Keep digging until we hit a Cfunc call, then switch back to Native stack
+      # - Repeat until we consume the entire stack
+      def weave_native_stack(stack_tree)
+        collected_paths = []
+        tree_to_array_of_paths(stack_tree, @thread[:frames], [], collected_paths)
+        collected_paths = collected_paths.map do |path|
+          next if path.size == 0
+
+          new_path = []
+          new_path << path.shift # root
+
+          # Split the stack into Ruby and Native parts
+          native_path, ruby_path = path.partition do |frame|
+            frame_id = frame[:frame_id]
+            @thread[:frames][frame_id][:entry_type] == 'Native'
+          end
+
+          mode = :native
+
+          loop do
+            break if ruby_path.size == 0 && native_path.size == 0
+
+            case mode
+            when :ruby
+              if ruby_path.size == 0
+                mode = :native
+                next
+              end
+
+              next_node = ruby_path[0]
+              new_path << ruby_path.shift
+              next_node_frame = @thread[:frames][next_node[:frame_id]]
+              if native_path.size > 0
+                # Search the remainder of the native stack for the same address
+                # Note: This isn't a very efficient way for the job... but it still works
+                ruby_addr = next_node_frame[:address]
+                native_path[0..].each do |native_node|
+                  native_addr = @thread[:frames][native_node[:frame_id]][:address]
+                  if ruby_addr && native_addr && ruby_addr == native_addr
+                    # A match has been found. Switch to native mode
+                    mode = :native
+                    break
+                  end
+                end
+              end
+            when :native
+              if native_path.size == 0
+                mode = :ruby
+                next
+              end
+
+              # Dig until we meet a rb_vm_exec
+              next_node = native_path[0]
+              new_path << native_path.shift
+              if @thread[:frames][next_node[:frame_id]][:full_label] =~ /vm_exec_core/ # VM_EXEC in vm_exec.h
+                mode = :ruby
+              end
+            end
+          end
+
+          new_path
+        end
+
+        # reconstruct stack_tree
+        new_stack_tree = array_of_paths_to_tree(collected_paths)
+        new_stack_tree
+      end
+
+      def tree_to_array_of_paths(stack_tree, frames, path, collected_paths)
+        new_path = path + [{ frame_id: stack_tree[:frame_id], node_id: stack_tree[:node_id] }]
+        if stack_tree[:children].empty?
+          collected_paths << new_path
+        else
+          stack_tree[:children].each do |frame_id, child|
+            tree_to_array_of_paths(child, frames, new_path, collected_paths)
+          end
+        end
+      end
+
+      def array_of_paths_to_tree(paths)
+        new_stack_tree = { children: {}, node_id: 0, frame_id: 0 }
+        paths.each do |path|
+          current = new_stack_tree
+          path[1..].each do |frame|
+            frame_id = frame[:frame_id]
+            node_id = frame[:node_id]
+            current[:children][frame_id] ||= { children: {}, node_id: node_id, frame_id: frame_id }
+            current = current[:children][frame_id]
+          end
+        end
+        new_stack_tree
       end
 
       def build_stack_table(func_table, frame_table)
