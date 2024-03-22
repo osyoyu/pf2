@@ -58,7 +58,7 @@ Pf2.start(
   threads: [],            # Array<Thread>: A list of Ruby Threads to be tracked (default: `Thread.list`)
   time_mode: :cpu,        # `:cpu` or `:wall`: The sampling timer's mode
                           # (default: `:cpu` for SignalScheduler, `:wall` for TimerThreadScheduler)
-  track_new_threads: true # Boolean: Whether to automatically track Threads spawned after profiler start
+  track_all_threads: true # Boolean: Whether to track all Threads regardless of `threads` option
                           # (default: false)
 )
 ```

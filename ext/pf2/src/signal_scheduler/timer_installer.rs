@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem;
 use std::mem::ManuallyDrop;
@@ -21,6 +22,7 @@ pub struct TimerInstaller {
 struct Inner {
     configuration: Configuration,
     pub profile: Arc<RwLock<Profile>>,
+    known_threads: HashSet<VALUE>,
 }
 
 impl TimerInstaller {
@@ -34,22 +36,25 @@ impl TimerInstaller {
             inner: Box::new(Mutex::new(Inner {
                 configuration: configuration.clone(),
                 profile,
+                known_threads: HashSet::new(),
             })),
         };
 
-        if let Ok(inner) = installer.inner.try_lock() {
+        if let Ok(mut inner) = installer.inner.try_lock() {
             for ruby_thread in configuration.target_ruby_threads.iter() {
                 let ruby_thread: VALUE = *ruby_thread;
-                inner.register_timer_to_ruby_thread(ruby_thread, false);
+                inner.known_threads.insert(ruby_thread);
+                inner.register_timer_to_ruby_thread(ruby_thread);
             }
         }
 
-        if configuration.track_new_threads {
+        if configuration.track_all_threads {
             let ptr = Box::into_raw(installer.inner);
             unsafe {
+                // TODO: Clean up this hook when the profiling session ends
                 rb_internal_thread_add_event_hook(
-                    Some(Self::on_thread_start),
-                    RUBY_INTERNAL_THREAD_EVENT_STARTED,
+                    Some(Self::on_thread_resume),
+                    RUBY_INTERNAL_THREAD_EVENT_RESUMED,
                     ptr as *mut c_void,
                 );
             };
@@ -57,40 +62,42 @@ impl TimerInstaller {
     }
 
     // Thread start callback
-    unsafe extern "C" fn on_thread_start(
+    unsafe extern "C" fn on_thread_resume(
         _flag: rb_event_flag_t,
         data: *const rb_internal_thread_event_data,
         custom_data: *mut c_void,
     ) {
-        // The SignalScheduler (as a Ruby obj) should be passed as custom_data
-        let inner = unsafe { ManuallyDrop::new(Box::from_raw(custom_data as *mut Mutex<Inner>)) };
-        let inner = inner.lock().unwrap();
         let ruby_thread: VALUE = unsafe { (*data).thread };
-        inner.register_timer_to_ruby_thread(ruby_thread, true);
+
+        // A pointer to Box<Inner> is passed as custom_data
+        let inner = unsafe { ManuallyDrop::new(Box::from_raw(custom_data as *mut Mutex<Inner>)) };
+        let mut inner = inner.lock().unwrap();
+
+        if !inner.known_threads.contains(&ruby_thread) {
+            inner.known_threads.insert(ruby_thread);
+            // Install a timer for the thread
+            inner.register_timer_to_ruby_thread(ruby_thread);
+        }
     }
 }
 
 impl Inner {
-    fn register_timer_to_ruby_thread(&self, ruby_thread: VALUE, assume_current_thread: bool) {
+    fn register_timer_to_ruby_thread(&self, ruby_thread: VALUE) {
         // NOTE: This Box is never dropped
         let signal_handler_args = Box::new(SignalHandlerArgs {
             profile: Arc::clone(&self.profile),
             context_ruby_thread: ruby_thread,
         });
 
-        let kernel_thread_id: i32 = if assume_current_thread {
-            unsafe { libc::syscall(libc::SYS_gettid).try_into().unwrap() }
-        } else {
-            // rb_funcall deadlocks when called within a THREAD_EVENT_STARTED hook
-            i32::try_from(unsafe {
-                rb_num2int(rb_funcall(
-                    ruby_thread,
-                    rb_intern(cstr!("native_thread_id")), // kernel thread ID
-                    0,
-                ))
-            })
-            .unwrap()
-        };
+        // rb_funcall deadlocks when called within a THREAD_EVENT_STARTED hook
+        let kernel_thread_id: i32 = i32::try_from(unsafe {
+            rb_num2int(rb_funcall(
+                ruby_thread,
+                rb_intern(cstr!("native_thread_id")), // kernel thread ID
+                0,
+            ))
+        })
+        .unwrap();
 
         // Create a signal event
         let mut sigevent: libc::sigevent = unsafe { mem::zeroed() };
@@ -106,13 +113,7 @@ impl Inner {
         let mut timer: libc::timer_t = unsafe { mem::zeroed() };
         let clockid = match self.configuration.time_mode {
             crate::signal_scheduler::TimeMode::CpuTime => unsafe {
-                if assume_current_thread {
-                    // rb_thread_t->nt->thread_id isn't assigned yet on the
-                    // timing of THREAD_EVENT_STARTED hook
-                    libc::CLOCK_THREAD_CPUTIME_ID
-                } else {
-                    rb_thread_getcpuclockid(ruby_thread)
-                }
+                rb_thread_getcpuclockid(ruby_thread)
             },
             crate::signal_scheduler::TimeMode::WallTime => libc::CLOCK_MONOTONIC,
         };

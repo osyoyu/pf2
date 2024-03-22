@@ -9,7 +9,7 @@ pub struct Configuration {
     pub interval: Duration,
     pub time_mode: TimeMode,
     pub target_ruby_threads: HashSet<VALUE>,
-    pub track_new_threads: bool,
+    pub track_all_threads: bool,
 }
 
 #[derive(Clone, Debug)]

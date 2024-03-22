@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Added
+
+- New option: `track_all_threads`
+  - When true, all Threads will be tracked regardless of the `threads` option.
+
+### Removed
+
+- The `track_new_threads` option was removed in favor of the `track_all_threads` option.
+
 
 ## [0.3.0] - 2024-02-05
 

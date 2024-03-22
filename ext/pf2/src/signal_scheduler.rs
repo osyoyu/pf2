@@ -56,7 +56,7 @@ impl SignalScheduler {
                     rb_intern(cstr!("interval_ms")),
                     rb_intern(cstr!("threads")),
                     rb_intern(cstr!("time_mode")),
-                    rb_intern(cstr!("track_new_threads")),
+                    rb_intern(cstr!("track_all_threads")),
                 ]
                 .as_mut_ptr(),
                 0,
@@ -99,7 +99,7 @@ impl SignalScheduler {
         } else {
             configuration::TimeMode::CpuTime
         };
-        let track_new_threads: bool = if kwargs_values[3] != Qundef as VALUE {
+        let track_all_threads: bool = if kwargs_values[3] != Qundef as VALUE {
             RTEST(kwargs_values[3])
         } else {
             false
@@ -117,7 +117,7 @@ impl SignalScheduler {
             interval,
             target_ruby_threads,
             time_mode,
-            track_new_threads,
+            track_all_threads,
         });
 
         Qnil.into()
