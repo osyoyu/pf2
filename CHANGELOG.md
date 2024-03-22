@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Added
+
+- `pf2 serve` subcommand
+  - `pf2 serve -- ruby target.rb`
+  - Profile programs without any change
+
 
 ## [0.4.0] - 2024-03-22
 
