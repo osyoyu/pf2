@@ -14,11 +14,11 @@ use crate::signal_scheduler::{cstr, SignalHandlerArgs};
 
 #[derive(Debug)]
 pub struct TimerInstaller {
-    internal: Box<Mutex<Internal>>,
+    inner: Box<Mutex<Inner>>,
 }
 
 #[derive(Debug)]
-struct Internal {
+struct Inner {
     configuration: Configuration,
     pub profile: Arc<RwLock<Profile>>,
 }
@@ -31,21 +31,21 @@ impl TimerInstaller {
         profile: Arc<RwLock<Profile>>,
     ) {
         let installer = Self {
-            internal: Box::new(Mutex::new(Internal {
+            inner: Box::new(Mutex::new(Inner {
                 configuration: configuration.clone(),
                 profile,
             })),
         };
 
-        if let Ok(internal) = installer.internal.try_lock() {
+        if let Ok(inner) = installer.inner.try_lock() {
             for ruby_thread in configuration.target_ruby_threads.iter() {
                 let ruby_thread: VALUE = *ruby_thread;
-                internal.register_timer_to_ruby_thread(ruby_thread, false);
+                inner.register_timer_to_ruby_thread(ruby_thread, false);
             }
         }
 
         if configuration.track_new_threads {
-            let ptr = Box::into_raw(installer.internal);
+            let ptr = Box::into_raw(installer.inner);
             unsafe {
                 rb_internal_thread_add_event_hook(
                     Some(Self::on_thread_start),
@@ -63,15 +63,14 @@ impl TimerInstaller {
         custom_data: *mut c_void,
     ) {
         // The SignalScheduler (as a Ruby obj) should be passed as custom_data
-        let internal =
-            unsafe { ManuallyDrop::new(Box::from_raw(custom_data as *mut Mutex<Internal>)) };
-        let internal = internal.lock().unwrap();
+        let inner = unsafe { ManuallyDrop::new(Box::from_raw(custom_data as *mut Mutex<Inner>)) };
+        let inner = inner.lock().unwrap();
         let ruby_thread: VALUE = unsafe { (*data).thread };
-        internal.register_timer_to_ruby_thread(ruby_thread, true);
+        inner.register_timer_to_ruby_thread(ruby_thread, true);
     }
 }
 
-impl Internal {
+impl Inner {
     fn register_timer_to_ruby_thread(&self, ruby_thread: VALUE, assume_current_thread: bool) {
         // NOTE: This Box is never dropped
         let signal_handler_args = Box::new(SignalHandlerArgs {
