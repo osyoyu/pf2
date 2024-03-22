@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+
+## [0.4.0] - 2024-03-22
+
 ### Added
 
 - New option: `track_all_threads`
