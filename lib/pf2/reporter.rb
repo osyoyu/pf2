@@ -155,7 +155,7 @@ module Pf2
           ret[:func] << i # TODO
           ret[:inner_window_id] << nil
           ret[:implementation] << nil
-          ret[:line] << nil
+          ret[:line] << frame[:callsite_lineno]
           ret[:column] << nil
           ret[:optimizations] << nil
           ret[:inline_depth] << 0
@@ -186,8 +186,8 @@ module Pf2
           ret[:is_js] << !native
           ret[:relevant_for_js] << false
           ret[:resource] << -1
-          ret[:file_name] << nil
-          ret[:line_number] << nil
+          ret[:file_name] << string_id(frame[:file_name])
+          ret[:line_number] << frame[:function_first_lineno]
           ret[:column_number] << nil
 
           @func_id_map[id] = i
