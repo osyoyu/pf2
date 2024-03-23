@@ -6,6 +6,7 @@ use rb_sys::*;
 
 use crate::backtrace::Backtrace;
 use crate::profile::Profile;
+use crate::util::RTEST;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ProfileSerializer {
@@ -62,6 +63,9 @@ struct FrameTableEntry {
     id: FrameTableId,
     entry_type: FrameTableEntryType,
     full_label: String,
+    file_name: Option<String>,
+    function_first_lineno: Option<i32>,
+    callsite_lineno: Option<i32>,
     address: Option<usize>,
 }
 
@@ -134,6 +138,9 @@ impl ProfileSerializer {
                         id: calculate_id_for_c_frame(&frame.symbol_name),
                         entry_type: FrameTableEntryType::Native,
                         full_label: frame.symbol_name.clone(),
+                        file_name: None,
+                        function_first_lineno: None,
+                        callsite_lineno: None,
                         address: frame.address,
                     });
                 }
@@ -143,6 +150,7 @@ impl ProfileSerializer {
                 let ruby_stack_depth = sample.line_count;
                 for i in 0..ruby_stack_depth {
                     let frame: VALUE = sample.frames[i as usize];
+                    let lineno: i32 = sample.linenos[i as usize];
                     let address: Option<usize> = {
                         let cme = frame
                             as *mut crate::ruby_internal_apis::rb_callable_method_entry_struct;
@@ -156,15 +164,37 @@ impl ProfileSerializer {
                             None
                         }
                     };
+                    let mut frame_full_label: VALUE = rb_profile_frame_full_label(frame);
+                    let frame_full_label: String = if RTEST(frame_full_label) {
+                        CStr::from_ptr(rb_string_value_cstr(&mut frame_full_label))
+                            .to_str()
+                            .unwrap()
+                            .to_owned()
+                    } else {
+                        "(unknown)".to_owned()
+                    };
+                    let mut frame_path: VALUE = rb_profile_frame_path(frame);
+                    let frame_path: String = if RTEST(frame_path) {
+                        CStr::from_ptr(rb_string_value_cstr(&mut frame_path))
+                            .to_str()
+                            .unwrap()
+                            .to_owned()
+                    } else {
+                        "(unknown)".to_owned()
+                    };
+                    let frame_first_lineno: VALUE = rb_profile_frame_first_lineno(frame);
+                    let frame_first_lineno: Option<i32> = if RTEST(frame_first_lineno) {
+                        Some(rb_num2int(frame_first_lineno).try_into().unwrap())
+                    } else {
+                        None
+                    };
                     merged_stack.push(FrameTableEntry {
                         id: frame,
                         entry_type: FrameTableEntryType::Ruby,
-                        full_label: CStr::from_ptr(rb_string_value_cstr(
-                            &mut rb_profile_frame_full_label(frame),
-                        ))
-                        .to_str()
-                        .unwrap()
-                        .to_owned(),
+                        full_label: frame_full_label,
+                        file_name: Some(frame_path),
+                        function_first_lineno: frame_first_lineno,
+                        callsite_lineno: Some(lineno),
                         address,
                     });
                 }
