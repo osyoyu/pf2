@@ -34,7 +34,8 @@ module Pf2
 
         return 1
       else
-        STDERR.puts "#{program_name}: Unknown subcommand #{subcommand}"
+        STDERR.puts "#{program_name}: Unknown subcommand '#{subcommand}'."
+        STDERR.puts "See '#{program_name} --help'"
         return 1
       end
     end
