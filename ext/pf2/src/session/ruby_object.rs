@@ -59,8 +59,8 @@ impl SessionRubyObject {
     }
 
     unsafe extern "C" fn dmark(ptr: *mut c_void) {
-        let collector = ManuallyDrop::new(Box::from_raw(ptr as *mut SessionRubyObject));
-        if let Some(session) = &collector.session {
+        let obj = ManuallyDrop::new(Box::from_raw(ptr as *mut SessionRubyObject));
+        if let Some(session) = &obj.session {
             session.dmark()
         }
     }
