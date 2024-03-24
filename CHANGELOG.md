@@ -5,12 +5,16 @@
 - `pf2 serve` subcommand
   - `pf2 serve -- ruby target.rb`
   - Profile programs without any change
+- New option: `threads: :all`
+  - When specified, Pf2 will track all active threads.
+  - `threads: nil` / omitting the `threads` option has the same effect.
 - Introduce `Pf2::Session` (https://github.com/osyoyu/pf2/pull/16)
   - `Session` will be responsible for managing Profiles and Schedulers
 
 ### Removed
 
 - `Pf2::SignalScheduler` and `Pf2::TimerThreadScheduler` are now hidden from Ruby.
+- `track_all_threads` option is removed in favor of `threads: :all`.
 
 
 ## [0.4.0] - 2024-03-22

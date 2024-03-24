@@ -68,11 +68,10 @@ Pf2 accepts the following configuration keys:
 ```rb
 Pf2.start(
   interval_ms: 49,        # Integer: The sampling interval in milliseconds (default: 49)
-  threads: [],            # Array<Thread>: A list of Ruby Threads to be tracked (default: `Thread.list`)
   time_mode: :cpu,        # `:cpu` or `:wall`: The sampling timer's mode
                           # (default: `:cpu` for SignalScheduler, `:wall` for TimerThreadScheduler)
-  track_all_threads: true # Boolean: Whether to track all Threads regardless of `threads` option
-                          # (default: false)
+  threads: [th1, th2],    # `Array<Thread>` | `:all`: A list of Ruby Threads to be tracked.
+                          # When `:all` or unspecified, Pf2 will track all active Threads.
 )
 ```
 
