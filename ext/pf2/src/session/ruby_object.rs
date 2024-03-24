@@ -24,6 +24,22 @@ impl SessionRubyObject {
         Qnil.into()
     }
 
+    pub unsafe extern "C" fn rb_start(rbself: VALUE) -> VALUE {
+        let mut obj = Self::get_struct_from(rbself);
+        match &mut obj.session {
+            Some(session) => session.start(),
+            None => panic!("Session is not initialized"),
+        }
+    }
+
+    pub unsafe extern "C" fn rb_stop(rbself: VALUE) -> VALUE {
+        let mut obj = Self::get_struct_from(rbself);
+        match &mut obj.session {
+            Some(session) => session.stop(),
+            None => panic!("Session is not initialized"),
+        }
+    }
+
     // Extract the SessionRubyObject struct from a Ruby object
     unsafe fn get_struct_from(obj: VALUE) -> ManuallyDrop<Box<Self>> {
         unsafe {

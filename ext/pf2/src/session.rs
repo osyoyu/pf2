@@ -9,10 +9,13 @@ use std::time::Duration;
 use rb_sys::*;
 
 use self::configuration::Configuration;
+use crate::scheduler::Scheduler;
+use crate::signal_scheduler::SignalScheduler;
 use crate::util::*;
 
 pub struct Session {
     pub configuration: Configuration,
+    pub scheduler: Box<dyn Scheduler>,
 }
 
 impl Session {
@@ -22,7 +25,7 @@ impl Session {
         unsafe {
             rb_scan_args(argc, argv, cstr!(":"), &kwargs);
         };
-        let mut kwargs_values: [VALUE; 4] = [Qnil.into(); 4];
+        let mut kwargs_values: [VALUE; 5] = [Qnil.into(); 5];
         unsafe {
             rb_get_kwargs(
                 kwargs,
@@ -31,10 +34,11 @@ impl Session {
                     rb_intern(cstr!("threads")),
                     rb_intern(cstr!("time_mode")),
                     rb_intern(cstr!("track_all_threads")),
+                    rb_intern(cstr!("scheduler")),
                 ]
                 .as_mut_ptr(),
                 0,
-                4,
+                5,
                 kwargs_values.as_mut_ptr(),
             );
         };
@@ -43,14 +47,26 @@ impl Session {
         let threads = Self::parse_option_threads(kwargs_values[1]);
         let time_mode = Self::parse_option_time_mode(kwargs_values[2]);
         let track_all_threads = Self::parse_option_track_all_threads(kwargs_values[3]);
+        let scheduler = Self::parse_option_scheduler(kwargs_values[4]);
+
+        let configuration = Configuration {
+            scheduler,
+            interval,
+            target_ruby_threads: threads.clone(),
+            time_mode,
+            track_all_threads,
+        };
+
+        let scheduler = match configuration.scheduler {
+            configuration::Scheduler::Signal => Box::new(SignalScheduler::new(&configuration)),
+            configuration::Scheduler::TimerThread => {
+                todo!("implement TimerThread support")
+            }
+        };
 
         Session {
-            configuration: Configuration {
-                interval,
-                target_ruby_threads: threads,
-                time_mode,
-                track_all_threads,
-            },
+            configuration,
+            scheduler,
         }
     }
 
@@ -118,7 +134,37 @@ impl Session {
         RTEST(value)
     }
 
+    fn parse_option_scheduler(value: VALUE) -> configuration::Scheduler {
+        if value == Qundef as VALUE {
+            // Return default
+            return configuration::DEFAULT_SCHEDULER;
+        }
+
+        let specified_scheduler = unsafe {
+            let mut str = rb_funcall(value, rb_intern(cstr!("to_s")), 0);
+            let ptr = rb_string_value_ptr(&mut str);
+            CStr::from_ptr(ptr).to_str().unwrap()
+        };
+        configuration::Scheduler::from_str(specified_scheduler).unwrap_or_else(|_| {
+            // Raise an ArgumentError if the mode is invalid
+            unsafe {
+                rb_raise(
+                    rb_eArgError,
+                    cstr!("Invalid scheduler. Valid values are ':signal' and ':timer_thread'."),
+                )
+            }
+        })
+    }
+
+    pub fn start(&mut self) -> VALUE {
+        self.scheduler.start()
+    }
+
+    pub fn stop(&mut self) -> VALUE {
+        self.scheduler.stop()
+    }
+
     pub fn dmark(&self) {
-        // No-op
+        self.scheduler.dmark()
     }
 }

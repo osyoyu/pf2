@@ -8,9 +8,9 @@ use std::sync::{Mutex, RwLock};
 
 use rb_sys::*;
 
-use super::configuration::Configuration;
 use crate::profile::Profile;
 use crate::ruby_internal_apis::rb_thread_getcpuclockid;
+use crate::session::configuration::Configuration;
 use crate::signal_scheduler::{cstr, SignalHandlerArgs};
 
 #[derive(Debug)]
@@ -112,10 +112,10 @@ impl Inner {
         // Create and configure timer to fire every _interval_ ms of CPU time
         let mut timer: libc::timer_t = unsafe { mem::zeroed() };
         let clockid = match self.configuration.time_mode {
-            crate::signal_scheduler::TimeMode::CpuTime => unsafe {
+            crate::session::configuration::TimeMode::CpuTime => unsafe {
                 rb_thread_getcpuclockid(ruby_thread)
             },
-            crate::signal_scheduler::TimeMode::WallTime => libc::CLOCK_MONOTONIC,
+            crate::session::configuration::TimeMode::WallTime => libc::CLOCK_MONOTONIC,
         };
         let err = unsafe { libc::timer_create(clockid, &mut sigevent, &mut timer) };
         if err != 0 {
