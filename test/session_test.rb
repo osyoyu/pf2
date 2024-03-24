@@ -11,17 +11,17 @@ class SessionTest < Minitest::Test
   end
 
   def test_scheduler_option
-    config = Pf2::Session.new(scheduler: :timer_thread).configuration
+    config = Pf2::Session.new(scheduler: :timer_thread, threads: []).configuration
     assert_equal(:timer_thread, config[:scheduler])
   end
 
   def test_interval_ms_option
-    config = Pf2::Session.new(interval_ms: 1).configuration
+    config = Pf2::Session.new(interval_ms: 1, threads: []).configuration
     assert_equal(1, config[:interval_ms])
   end
 
   def test_time_mode_option
-    config = Pf2::Session.new(time_mode: :wall).configuration
+    config = Pf2::Session.new(time_mode: :wall, threads: []).configuration
     assert_equal(:wall, config[:time_mode])
   end
 end

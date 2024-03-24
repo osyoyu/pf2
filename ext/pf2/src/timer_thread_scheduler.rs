@@ -12,7 +12,7 @@ use crate::profile::Profile;
 use crate::profile_serializer::ProfileSerializer;
 use crate::sample::Sample;
 use crate::scheduler::Scheduler;
-use crate::session::configuration::Configuration;
+use crate::session::configuration::{self, Configuration};
 use crate::util::*;
 
 #[derive(Clone, Debug)]
@@ -29,7 +29,7 @@ struct PostponedJobArgs {
 }
 
 impl Scheduler for TimerThreadScheduler {
-    fn start(&mut self) -> VALUE {
+    fn start(&self) -> VALUE {
         // Register the Postponed Job which does the actual work of collecting samples
         let postponed_job_args: Box<PostponedJobArgs> = Box::new(PostponedJobArgs {
             configuration: Arc::clone(&self.configuration),
@@ -53,7 +53,7 @@ impl Scheduler for TimerThreadScheduler {
         Qtrue.into()
     }
 
-    fn stop(&mut self) -> VALUE {
+    fn stop(&self) -> VALUE {
         // Stop the collector thread
         self.stop_requested.store(true, Ordering::Relaxed);
 
@@ -74,6 +74,10 @@ impl Scheduler for TimerThreadScheduler {
         let serialized = ProfileSerializer::serialize(&profile);
         let serialized = CString::new(serialized).unwrap();
         unsafe { rb_str_new_cstr(serialized.as_ptr()) }
+    }
+
+    fn on_new_thread(&self, _thread: VALUE) {
+        todo!();
     }
 
     fn dmark(&self) {
@@ -142,16 +146,22 @@ impl TimerThreadScheduler {
         };
 
         // Collect stack information from specified Ruby Threads
-        let ruby_threads = &args.configuration.target_ruby_threads;
-        for ruby_thread in ruby_threads.iter() {
-            // Check if the thread is still alive
-            if unsafe { rb_funcall(*ruby_thread, rb_intern(cstr!("status")), 0) } == Qfalse as u64 {
-                continue;
-            }
+        match &args.configuration.target_ruby_threads {
+            configuration::Threads::All => todo!(),
+            configuration::Threads::Targeted(threads) => {
+                for ruby_thread in threads.iter() {
+                    // Check if the thread is still alive
+                    if unsafe { rb_funcall(*ruby_thread, rb_intern(cstr!("status")), 0) }
+                        == Qfalse as u64
+                    {
+                        continue;
+                    }
 
-            let sample = Sample::capture(*ruby_thread, &profile.backtrace_state);
-            if profile.temporary_sample_buffer.push(sample).is_err() {
-                log::debug!("Temporary sample buffer full. Dropping sample.");
+                    let sample = Sample::capture(*ruby_thread, &profile.backtrace_state);
+                    if profile.temporary_sample_buffer.push(sample).is_err() {
+                        log::debug!("Temporary sample buffer full. Dropping sample.");
+                    }
+                }
             }
         }
         unsafe {
