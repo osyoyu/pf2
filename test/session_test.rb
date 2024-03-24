@@ -11,7 +11,7 @@ class SessionTest < Minitest::Test
   end
 
   def test_scheduler_option
-    config = Pf2::Session.new(scheduler: :timer_thread, threads: []).configuration
+    config = Pf2::Session.new(scheduler: :timer_thread, time_mode: :wall, threads: []).configuration
     assert_equal(:timer_thread, config[:scheduler])
   end
 
