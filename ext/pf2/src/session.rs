@@ -20,7 +20,7 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new_from_rb_initialize(argc: c_int, argv: *const VALUE, _rbself: VALUE) -> Self {
+    pub fn new_from_rb_initialize(argc: c_int, argv: *const VALUE, rbself: VALUE) -> Self {
         // Parse arguments
         let kwargs: VALUE = Qnil.into();
         unsafe {
@@ -57,6 +57,11 @@ impl Session {
             time_mode,
             track_all_threads,
         };
+
+        // Store configuration as a Ruby Hash for convenience
+        unsafe {
+            rb_iv_set(rbself, cstr!("@configuration"), configuration.to_rb_hash());
+        }
 
         let scheduler: Box<dyn Scheduler> = match configuration.scheduler {
             configuration::Scheduler::Signal => Box::new(SignalScheduler::new(&configuration)),
