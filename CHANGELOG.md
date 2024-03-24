@@ -5,6 +5,12 @@
 - `pf2 serve` subcommand
   - `pf2 serve -- ruby target.rb`
   - Profile programs without any change
+- Introduce `Pf2::Session` (https://github.com/osyoyu/pf2/pull/16)
+  - `Session` will be responsible for managing Profiles and Schedulers
+
+### Removed
+
+- `Pf2::SignalScheduler` and `Pf2::TimerThreadScheduler` are now hidden from Ruby.
 
 
 ## [0.4.0] - 2024-03-22
