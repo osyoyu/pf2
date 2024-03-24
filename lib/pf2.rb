@@ -1,30 +1,22 @@
 require_relative 'pf2/pf2'
+require_relative 'pf2/session'
 require_relative 'pf2/version'
 
 module Pf2
   class Error < StandardError; end
 
-  def self.default_scheduler_class
-    # SignalScheduler is Linux-only. Use TimerThreadScheduler on other platforms.
-    if defined?(SignalScheduler)
-      SignalScheduler
-    else
-      TimerThreadScheduler
-    end
-  end
-
   def self.start(...)
-    @@default_scheduler = default_scheduler_class.new(...)
-    @@default_scheduler.start
+    @@session = Pf2::Session.new(...)
+    @@session.start
   end
 
-  def self.stop(...)
-    @@default_scheduler.stop(...)
+  def self.stop
+    @@session.stop
   end
 
   def self.profile(&block)
     raise ArgumentError, "block required" unless block_given?
-    start([Thread.current], true)
+    start(threads: Thread.list)
     yield
     stop
   end
