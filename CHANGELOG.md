@@ -1,6 +1,13 @@
 ## [Unreleased]
 
 
+## [0.5.1] - 2024-03-25
+
+### Fixed
+
+- Fixed compilation on non-Linux environments.
+
+
 ## [0.5.0] - 2024-03-25
 
 ### Added
