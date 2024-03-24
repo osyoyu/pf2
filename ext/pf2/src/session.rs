@@ -1,4 +1,5 @@
 pub mod configuration;
+mod new_thread_watcher;
 pub mod ruby_object;
 
 use std::collections::HashSet;
