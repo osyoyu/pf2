@@ -3,7 +3,6 @@
 use rb_sys::*;
 
 use crate::session::ruby_object::SessionRubyObject;
-use crate::timer_thread_scheduler::TimerThreadScheduler;
 use crate::util::*;
 
 #[allow(non_snake_case)]
@@ -38,31 +37,6 @@ extern "C" fn Init_pf2() {
             rb_mPf2_Session,
             cstr!("stop"),
             Some(to_ruby_cfunc_with_no_args(SessionRubyObject::rb_stop)),
-            0,
-        );
-
-        let rb_mPf2_TimerThreadScheduler =
-            rb_define_class_under(rb_mPf2, cstr!("TimerThreadScheduler"), rb_cObject);
-        rb_define_alloc_func(
-            rb_mPf2_TimerThreadScheduler,
-            Some(TimerThreadScheduler::rb_alloc),
-        );
-        rb_define_method(
-            rb_mPf2_TimerThreadScheduler,
-            cstr!("initialize"),
-            Some(to_ruby_cfunc_with_args(TimerThreadScheduler::rb_initialize)),
-            -1,
-        );
-        rb_define_method(
-            rb_mPf2_TimerThreadScheduler,
-            cstr!("start"),
-            Some(to_ruby_cfunc_with_no_args(TimerThreadScheduler::rb_start)),
-            0,
-        );
-        rb_define_method(
-            rb_mPf2_TimerThreadScheduler,
-            cstr!("stop"),
-            Some(to_ruby_cfunc_with_no_args(TimerThreadScheduler::rb_stop)),
             0,
         );
     }

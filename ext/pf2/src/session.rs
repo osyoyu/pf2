@@ -11,6 +11,7 @@ use rb_sys::*;
 use self::configuration::Configuration;
 use crate::scheduler::Scheduler;
 use crate::signal_scheduler::SignalScheduler;
+use crate::timer_thread_scheduler::TimerThreadScheduler;
 use crate::util::*;
 
 pub struct Session {
@@ -57,10 +58,10 @@ impl Session {
             track_all_threads,
         };
 
-        let scheduler = match configuration.scheduler {
+        let scheduler: Box<dyn Scheduler> = match configuration.scheduler {
             configuration::Scheduler::Signal => Box::new(SignalScheduler::new(&configuration)),
             configuration::Scheduler::TimerThread => {
-                todo!("implement TimerThread support")
+                Box::new(TimerThreadScheduler::new(&configuration))
             }
         };
 
@@ -130,8 +131,7 @@ impl Session {
             // Return default
             return false;
         }
-
-        RTEST(value)
+        todo!("Implement track_all_threads");
     }
 
     fn parse_option_scheduler(value: VALUE) -> configuration::Scheduler {
