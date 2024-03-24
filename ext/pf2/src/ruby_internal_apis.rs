@@ -1,13 +1,20 @@
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-use libc::{clockid_t, pthread_getcpuclockid, pthread_t};
+use libc::{clockid_t, pthread_t};
 use rb_sys::{rb_check_typeddata, rb_data_type_struct, RTypedData, VALUE};
 use std::ffi::{c_char, c_int, c_void};
 use std::mem::MaybeUninit;
 
-// Types and structs from Ruby 3.4.0.
+#[cfg(target_os = "linux")]
+use libc::pthread_getcpuclockid;
 
+#[cfg(not(target_os = "linux"))]
+pub unsafe fn pthread_getcpuclockid(thread: pthread_t, clk_id: *mut clockid_t) -> c_int {
+    unimplemented!()
+}
+
+// Types and structs from Ruby 3.4.0.
 #[repr(C)]
 pub struct rb_callable_method_entry_struct {
     /* same fields with rb_method_entry_t */

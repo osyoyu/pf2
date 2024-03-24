@@ -13,6 +13,8 @@ mod scheduler;
 mod session;
 #[cfg(target_os = "linux")]
 mod signal_scheduler;
+#[cfg(not(target_os = "linux"))]
+mod signal_scheduler_unsupported_platform;
 mod timer_thread_scheduler;
 mod util;
 

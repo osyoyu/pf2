@@ -16,7 +16,10 @@ use self::configuration::Configuration;
 use self::new_thread_watcher::NewThreadWatcher;
 use crate::profile::Profile;
 use crate::scheduler::Scheduler;
+#[cfg(target_os = "linux")]
 use crate::signal_scheduler::SignalScheduler;
+#[cfg(not(target_os = "linux"))]
+use crate::signal_scheduler_unsupported_platform::SignalScheduler;
 use crate::timer_thread_scheduler::TimerThreadScheduler;
 use crate::util::*;
 
@@ -176,15 +179,27 @@ impl Session {
             let ptr = rb_string_value_ptr(&mut str);
             CStr::from_ptr(ptr).to_str().unwrap()
         };
-        configuration::Scheduler::from_str(specified_scheduler).unwrap_or_else(|_| {
-            // Raise an ArgumentError if the mode is invalid
+        let scheduler =
+            configuration::Scheduler::from_str(specified_scheduler).unwrap_or_else(|_| {
+                // Raise an ArgumentError if the mode is invalid
+                unsafe {
+                    rb_raise(
+                        rb_eArgError,
+                        cstr!("Invalid scheduler. Valid values are ':signal' and ':timer_thread'."),
+                    )
+                }
+            });
+
+        // Raise an ArgumentError if the scheduler is not supported on the current platform
+        if !cfg!(target_os = "linux") && scheduler == configuration::Scheduler::Signal {
             unsafe {
                 rb_raise(
                     rb_eArgError,
-                    cstr!("Invalid scheduler. Valid values are ':signal' and ':timer_thread'."),
+                    cstr!("Signal scheduler is not supported on this platform."),
                 )
             }
-        })
+        }
+        scheduler
     }
 
     pub fn start(&mut self) -> VALUE {
