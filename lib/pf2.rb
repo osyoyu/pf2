@@ -19,5 +19,6 @@ module Pf2
     start(threads: Thread.list)
     yield
     stop
+    @@session = nil # let GC clean up the session
   end
 end
