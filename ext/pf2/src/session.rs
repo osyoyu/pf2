@@ -22,7 +22,7 @@ use crate::util::*;
 
 pub struct Session {
     pub configuration: Configuration,
-    pub scheduler: Box<dyn Scheduler>,
+    pub scheduler: Arc<dyn Scheduler>,
     pub profile: Arc<RwLock<Profile>>,
     pub running: Arc<AtomicBool>,
     pub new_thread_watcher: Option<NewThreadWatcher>,
@@ -73,20 +73,24 @@ impl Session {
         let profile = Arc::new(RwLock::new(Profile::new()));
 
         // Initialize the specified Scheduler
-        let scheduler: Box<dyn Scheduler> = match configuration.scheduler {
+        let scheduler: Arc<dyn Scheduler> = match configuration.scheduler {
             configuration::Scheduler::Signal => {
-                Box::new(SignalScheduler::new(&configuration, Arc::clone(&profile)))
+                Arc::new(SignalScheduler::new(&configuration, Arc::clone(&profile)))
             }
-            configuration::Scheduler::TimerThread => Box::new(TimerThreadScheduler::new(
+            configuration::Scheduler::TimerThread => Arc::new(TimerThreadScheduler::new(
                 &configuration,
                 Arc::clone(&profile),
             )),
         };
 
         let new_thread_watcher = match threads {
-            configuration::Threads::All => Some(NewThreadWatcher::watch(move |thread: VALUE| {
-                log::debug!("New Ruby thread detected: {:?}", thread);
-            })),
+            configuration::Threads::All => {
+                let scheduler = Arc::clone(&scheduler);
+                Some(NewThreadWatcher::watch(move |thread: VALUE| {
+                    log::debug!("New Ruby thread detected: {:?}", thread);
+                    scheduler.on_new_thread(thread);
+                }))
+            }
             configuration::Threads::Targeted(_) => None,
         };
 
