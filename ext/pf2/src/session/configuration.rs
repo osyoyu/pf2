@@ -62,6 +62,9 @@ pub enum Threads {
 
 impl Configuration {
     pub fn validate(&self) -> Result<(), String> {
+        if self.scheduler == Scheduler::TimerThread && self.time_mode == TimeMode::CpuTime {
+            return Err("TimerThread scheduler does not support `time_mode: :cpu`.".to_owned());
+        }
         if self.scheduler == Scheduler::TimerThread && self.target_ruby_threads == Threads::All {
             return Err(concat!(
                 "TimerThread scheduler does not support `threads: :all` at the moment. ",

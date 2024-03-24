@@ -24,4 +24,10 @@ class SessionTest < Minitest::Test
     config = Pf2::Session.new(time_mode: :wall, threads: []).configuration
     assert_equal(:wall, config[:time_mode])
   end
+
+  def test_timer_thread_scheduler_does_not_accept_cpu_time_mode
+    assert_raises(ArgumentError) do
+      config = Pf2::Session.new(scheduler: :timer_thread, time_mode: :cpu, threads: [])
+    end
+  end
 end
