@@ -18,7 +18,7 @@ pub struct Configuration {
     pub target_ruby_threads: Threads,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Scheduler {
     Signal,
     TimerThread,
@@ -36,7 +36,7 @@ impl FromStr for Scheduler {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TimeMode {
     CpuTime,
     WallTime,
@@ -54,13 +54,25 @@ impl FromStr for TimeMode {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Threads {
     All,
     Targeted(HashSet<VALUE>),
 }
 
 impl Configuration {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.scheduler == Scheduler::TimerThread && self.target_ruby_threads == Threads::All {
+            return Err(concat!(
+                "TimerThread scheduler does not support `threads: :all` at the moment. ",
+                "Consider using `threads: Thread.list` for watching all threads at profiler start."
+            )
+            .to_owned());
+        }
+
+        Ok(())
+    }
+
     pub fn to_rb_hash(&self) -> VALUE {
         let hash: VALUE = unsafe { rb_hash_new() };
         unsafe {

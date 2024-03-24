@@ -3,7 +3,7 @@ mod new_thread_watcher;
 pub mod ruby_object;
 
 use std::collections::HashSet;
-use std::ffi::{c_int, CStr};
+use std::ffi::{c_int, CStr, CString};
 use std::str::FromStr as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
@@ -62,6 +62,13 @@ impl Session {
             interval,
             target_ruby_threads: threads.clone(),
             time_mode,
+        };
+
+        match configuration.validate() {
+            Ok(_) => {}
+            Err(msg) => unsafe {
+                rb_raise(rb_eArgError, CString::new(msg).unwrap().as_c_str().as_ptr());
+            },
         };
 
         // Store configuration as a Ruby Hash for convenience
