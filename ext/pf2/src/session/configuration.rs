@@ -15,8 +15,7 @@ pub struct Configuration {
     pub scheduler: Scheduler,
     pub interval: Duration,
     pub time_mode: TimeMode,
-    pub target_ruby_threads: HashSet<VALUE>,
-    pub track_all_threads: bool,
+    pub target_ruby_threads: Threads,
 }
 
 #[derive(Clone, Debug)]
@@ -53,6 +52,12 @@ impl FromStr for TimeMode {
             _ => Err(()),
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum Threads {
+    All,
+    Targeted(HashSet<VALUE>),
 }
 
 impl Configuration {

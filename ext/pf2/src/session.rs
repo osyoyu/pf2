@@ -13,6 +13,7 @@ use std::time::Duration;
 use rb_sys::*;
 
 use self::configuration::Configuration;
+use self::new_thread_watcher::NewThreadWatcher;
 use crate::profile::Profile;
 use crate::scheduler::Scheduler;
 use crate::signal_scheduler::SignalScheduler;
@@ -24,6 +25,7 @@ pub struct Session {
     pub scheduler: Box<dyn Scheduler>,
     pub profile: Arc<RwLock<Profile>>,
     pub running: Arc<AtomicBool>,
+    pub new_thread_watcher: Option<NewThreadWatcher>,
 }
 
 impl Session {
@@ -33,7 +35,7 @@ impl Session {
         unsafe {
             rb_scan_args(argc, argv, cstr!(":"), &kwargs);
         };
-        let mut kwargs_values: [VALUE; 5] = [Qnil.into(); 5];
+        let mut kwargs_values: [VALUE; 4] = [Qnil.into(); 4];
         unsafe {
             rb_get_kwargs(
                 kwargs,
@@ -41,12 +43,11 @@ impl Session {
                     rb_intern(cstr!("interval_ms")),
                     rb_intern(cstr!("threads")),
                     rb_intern(cstr!("time_mode")),
-                    rb_intern(cstr!("track_all_threads")),
                     rb_intern(cstr!("scheduler")),
                 ]
                 .as_mut_ptr(),
                 0,
-                5,
+                4,
                 kwargs_values.as_mut_ptr(),
             );
         };
@@ -54,15 +55,13 @@ impl Session {
         let interval = Self::parse_option_interval_ms(kwargs_values[0]);
         let threads = Self::parse_option_threads(kwargs_values[1]);
         let time_mode = Self::parse_option_time_mode(kwargs_values[2]);
-        let track_all_threads = Self::parse_option_track_all_threads(kwargs_values[3]);
-        let scheduler = Self::parse_option_scheduler(kwargs_values[4]);
+        let scheduler = Self::parse_option_scheduler(kwargs_values[3]);
 
         let configuration = Configuration {
             scheduler,
             interval,
             target_ruby_threads: threads.clone(),
             time_mode,
-            track_all_threads,
         };
 
         // Store configuration as a Ruby Hash for convenience
@@ -84,11 +83,19 @@ impl Session {
             )),
         };
 
+        let new_thread_watcher = match threads {
+            configuration::Threads::All => Some(NewThreadWatcher::watch(move |thread: VALUE| {
+                log::debug!("New Ruby thread detected: {:?}", thread);
+            })),
+            configuration::Threads::Targeted(_) => None,
+        };
+
         Session {
             configuration,
             scheduler,
             profile,
             running: Arc::new(AtomicBool::new(false)),
+            new_thread_watcher,
         }
     }
 
@@ -108,21 +115,21 @@ impl Session {
         }))
     }
 
-    fn parse_option_threads(value: VALUE) -> HashSet<VALUE> {
-        let threads = if value == Qundef as VALUE {
-            // Use Thread.list (all active Threads)
-            unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("list")), 0) }
-        } else {
-            value
-        };
+    fn parse_option_threads(value: VALUE) -> configuration::Threads {
+        if (value == Qundef as VALUE)
+            || (value == Qnil as VALUE)
+            || (value == unsafe { rb_id2sym(rb_intern(cstr!("all"))) })
+        {
+            return configuration::Threads::All;
+        }
 
         let mut set: HashSet<VALUE> = HashSet::new();
         unsafe {
-            for i in 0..RARRAY_LEN(threads) {
-                set.insert(rb_ary_entry(threads, i));
+            for i in 0..RARRAY_LEN(value) {
+                set.insert(rb_ary_entry(value, i));
             }
         }
-        set
+        configuration::Threads::Targeted(set)
     }
 
     fn parse_option_time_mode(value: VALUE) -> configuration::TimeMode {
@@ -145,14 +152,6 @@ impl Session {
                 )
             }
         })
-    }
-
-    fn parse_option_track_all_threads(value: VALUE) -> bool {
-        if value == Qundef as VALUE {
-            // Return default
-            return false;
-        }
-        todo!("Implement track_all_threads");
     }
 
     fn parse_option_scheduler(value: VALUE) -> configuration::Scheduler {
