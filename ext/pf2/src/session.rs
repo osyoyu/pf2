@@ -4,11 +4,15 @@ pub mod ruby_object;
 use std::collections::HashSet;
 use std::ffi::{c_int, CStr};
 use std::str::FromStr as _;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
+use std::thread;
 use std::time::Duration;
 
 use rb_sys::*;
 
 use self::configuration::Configuration;
+use crate::profile::Profile;
 use crate::scheduler::Scheduler;
 use crate::signal_scheduler::SignalScheduler;
 use crate::timer_thread_scheduler::TimerThreadScheduler;
@@ -17,6 +21,8 @@ use crate::util::*;
 pub struct Session {
     pub configuration: Configuration,
     pub scheduler: Box<dyn Scheduler>,
+    pub profile: Arc<RwLock<Profile>>,
+    pub running: Arc<AtomicBool>,
 }
 
 impl Session {
@@ -63,16 +69,25 @@ impl Session {
             rb_iv_set(rbself, cstr!("@configuration"), configuration.to_rb_hash());
         }
 
+        // Create a new Profile
+        let profile = Arc::new(RwLock::new(Profile::new()));
+
+        // Initialize the specified Scheduler
         let scheduler: Box<dyn Scheduler> = match configuration.scheduler {
-            configuration::Scheduler::Signal => Box::new(SignalScheduler::new(&configuration)),
-            configuration::Scheduler::TimerThread => {
-                Box::new(TimerThreadScheduler::new(&configuration))
+            configuration::Scheduler::Signal => {
+                Box::new(SignalScheduler::new(&configuration, Arc::clone(&profile)))
             }
+            configuration::Scheduler::TimerThread => Box::new(TimerThreadScheduler::new(
+                &configuration,
+                Arc::clone(&profile),
+            )),
         };
 
         Session {
             configuration,
             scheduler,
+            profile,
+            running: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -162,10 +177,36 @@ impl Session {
     }
 
     pub fn start(&mut self) -> VALUE {
+        self.running.store(true, Ordering::Relaxed);
+        self.start_profile_buffer_flusher_thread();
         self.scheduler.start()
     }
 
+    fn start_profile_buffer_flusher_thread(&self) {
+        let profile = Arc::clone(&self.profile);
+        let running = Arc::clone(&self.running);
+        log::debug!("flusher: Starting");
+        thread::spawn(move || loop {
+            if !running.load(Ordering::Relaxed) {
+                log::debug!("flusher: Exiting");
+                break;
+            }
+
+            log::trace!("flusher: Flushing temporary sample buffer");
+            match profile.try_write() {
+                Ok(mut profile) => {
+                    profile.flush_temporary_sample_buffer();
+                }
+                Err(_) => {
+                    log::debug!("flusher: Failed to acquire profile lock");
+                }
+            }
+            thread::sleep(Duration::from_millis(500));
+        });
+    }
+
     pub fn stop(&mut self) -> VALUE {
+        self.running.store(false, Ordering::Relaxed);
         self.scheduler.stop()
     }
 

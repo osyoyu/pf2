@@ -5,7 +5,6 @@ use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::Duration;
 
 use rb_sys::*;
 
@@ -19,7 +18,7 @@ use crate::util::*;
 #[derive(Clone, Debug)]
 pub struct TimerThreadScheduler {
     configuration: Arc<Configuration>,
-    profile: Option<Arc<RwLock<Profile>>>,
+    profile: Arc<RwLock<Profile>>,
     stop_requested: Arc<AtomicBool>,
 }
 
@@ -31,15 +30,10 @@ struct PostponedJobArgs {
 
 impl Scheduler for TimerThreadScheduler {
     fn start(&mut self) -> VALUE {
-        // Create Profile
-        let profile = Arc::new(RwLock::new(Profile::new()));
-        self.start_profile_buffer_flusher_thread(&profile);
-        self.profile = Some(profile);
-
         // Register the Postponed Job which does the actual work of collecting samples
         let postponed_job_args: Box<PostponedJobArgs> = Box::new(PostponedJobArgs {
             configuration: Arc::clone(&self.configuration),
-            profile: Arc::clone(self.profile.as_ref().unwrap()),
+            profile: Arc::clone(&self.profile),
         });
         let postponed_job_handle: rb_postponed_job_handle_t = unsafe {
             rb_postponed_job_preregister(
@@ -63,38 +57,32 @@ impl Scheduler for TimerThreadScheduler {
         // Stop the collector thread
         self.stop_requested.store(true, Ordering::Relaxed);
 
-        if let Some(profile) = &self.profile {
-            // Finalize
-            match profile.try_write() {
-                Ok(mut profile) => {
-                    profile.flush_temporary_sample_buffer();
-                }
-                Err(_) => {
-                    println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
-                    return Qfalse.into();
-                }
+        // Finalize
+        match self.profile.try_write() {
+            Ok(mut profile) => {
+                profile.flush_temporary_sample_buffer();
             }
-
-            let profile = profile.try_read().unwrap();
-            log::debug!("Number of samples: {}", profile.samples.len());
-
-            let serialized = ProfileSerializer::serialize(&profile);
-            let serialized = CString::new(serialized).unwrap();
-            unsafe { rb_str_new_cstr(serialized.as_ptr()) }
-        } else {
-            panic!("stop() called before start()");
+            Err(_) => {
+                println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
+                return Qfalse.into();
+            }
         }
+
+        let profile = self.profile.try_read().unwrap();
+        log::debug!("Number of samples: {}", profile.samples.len());
+
+        let serialized = ProfileSerializer::serialize(&profile);
+        let serialized = CString::new(serialized).unwrap();
+        unsafe { rb_str_new_cstr(serialized.as_ptr()) }
     }
 
     fn dmark(&self) {
-        if let Some(profile) = &self.profile {
-            match profile.read() {
-                Ok(profile) => unsafe {
-                    profile.dmark();
-                },
-                Err(_) => {
-                    panic!("[pf2 FATAL] dmark: Failed to acquire profile lock.");
-                }
+        match self.profile.read() {
+            Ok(profile) => unsafe {
+                profile.dmark();
+            },
+            Err(_) => {
+                panic!("[pf2 FATAL] dmark: Failed to acquire profile lock.");
             }
         }
     }
@@ -110,10 +98,10 @@ impl Scheduler for TimerThreadScheduler {
 }
 
 impl TimerThreadScheduler {
-    pub fn new(configuration: &Configuration) -> Self {
+    pub fn new(configuration: &Configuration, profile: Arc<RwLock<Profile>>) -> Self {
         Self {
             configuration: Arc::new(configuration.clone()),
-            profile: None,
+            profile,
             stop_requested: Arc::new(AtomicBool::new(false)),
         }
 
@@ -169,21 +157,5 @@ impl TimerThreadScheduler {
         unsafe {
             rb_gc_enable();
         }
-    }
-
-    fn start_profile_buffer_flusher_thread(&self, profile: &Arc<RwLock<Profile>>) {
-        let profile = Arc::clone(profile);
-        thread::spawn(move || loop {
-            log::trace!("Flushing temporary sample buffer");
-            match profile.try_write() {
-                Ok(mut profile) => {
-                    profile.flush_temporary_sample_buffer();
-                }
-                Err(_) => {
-                    log::debug!("flusher: Failed to acquire profile lock");
-                }
-            }
-            thread::sleep(Duration::from_millis(500));
-        });
     }
 }

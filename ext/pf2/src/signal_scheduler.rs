@@ -13,8 +13,6 @@ use core::panic;
 use std::ffi::{c_int, CString};
 use std::mem::ManuallyDrop;
 use std::sync::{Arc, RwLock};
-use std::thread;
-use std::time::Duration;
 use std::{mem, ptr::null_mut};
 
 use rb_sys::*;
@@ -24,7 +22,7 @@ use crate::util::*;
 #[derive(Debug)]
 pub struct SignalScheduler {
     configuration: Configuration,
-    profile: Option<Arc<RwLock<Profile>>>,
+    profile: Arc<RwLock<Profile>>,
 }
 
 pub struct SignalHandlerArgs {
@@ -34,53 +32,43 @@ pub struct SignalHandlerArgs {
 
 impl Scheduler for SignalScheduler {
     fn start(&mut self) -> VALUE {
-        let profile = Arc::new(RwLock::new(Profile::new()));
-        self.start_profile_buffer_flusher_thread(&profile);
         self.install_signal_handler();
 
         TimerInstaller::install_timer_to_ruby_threads(
             self.configuration.clone(),
-            Arc::clone(&profile),
+            Arc::clone(&self.profile),
         );
-
-        self.profile = Some(profile);
 
         Qtrue.into()
     }
 
     fn stop(&mut self) -> VALUE {
-        if let Some(profile) = &self.profile {
-            // Finalize
-            match profile.try_write() {
-                Ok(mut profile) => {
-                    profile.flush_temporary_sample_buffer();
-                }
-                Err(_) => {
-                    println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
-                    return Qfalse.into();
-                }
+        // Finalize
+        match self.profile.try_write() {
+            Ok(mut profile) => {
+                profile.flush_temporary_sample_buffer();
             }
-
-            let profile = profile.try_read().unwrap();
-            log::debug!("Number of samples: {}", profile.samples.len());
-
-            let serialized = ProfileSerializer::serialize(&profile);
-            let serialized = CString::new(serialized).unwrap();
-            unsafe { rb_str_new_cstr(serialized.as_ptr()) }
-        } else {
-            panic!("stop() called before start()");
+            Err(_) => {
+                println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
+                return Qfalse.into();
+            }
         }
+
+        let profile = self.profile.try_read().unwrap();
+        log::debug!("Number of samples: {}", profile.samples.len());
+
+        let serialized = ProfileSerializer::serialize(&profile);
+        let serialized = CString::new(serialized).unwrap();
+        unsafe { rb_str_new_cstr(serialized.as_ptr()) }
     }
 
     fn dmark(&self) {
-        if let Some(profile) = &self.profile {
-            match profile.read() {
-                Ok(profile) => unsafe {
-                    profile.dmark();
-                },
-                Err(_) => {
-                    panic!("[pf2 FATAL] dmark: Failed to acquire profile lock.");
-                }
+        match self.profile.read() {
+            Ok(profile) => unsafe {
+                profile.dmark();
+            },
+            Err(_) => {
+                panic!("[pf2 FATAL] dmark: Failed to acquire profile lock.");
             }
         }
     }
@@ -96,10 +84,10 @@ impl Scheduler for SignalScheduler {
 }
 
 impl SignalScheduler {
-    pub fn new(configuration: &Configuration) -> Self {
+    pub fn new(configuration: &Configuration, profile: Arc<RwLock<Profile>>) -> Self {
         Self {
             configuration: configuration.clone(),
-            profile: None,
+            profile,
         }
     }
 
@@ -141,21 +129,5 @@ impl SignalScheduler {
         if profile.temporary_sample_buffer.push(sample).is_err() {
             log::debug!("Temporary sample buffer full. Dropping sample.");
         }
-    }
-
-    fn start_profile_buffer_flusher_thread(&self, profile: &Arc<RwLock<Profile>>) {
-        let profile = Arc::clone(profile);
-        thread::spawn(move || loop {
-            log::trace!("Flushing temporary sample buffer");
-            match profile.try_write() {
-                Ok(mut profile) => {
-                    profile.flush_temporary_sample_buffer();
-                }
-                Err(_) => {
-                    log::debug!("flusher: Failed to acquire profile lock");
-                }
-            }
-            thread::sleep(Duration::from_millis(500));
-        });
     }
 }
