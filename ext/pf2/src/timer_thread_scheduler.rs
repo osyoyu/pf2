@@ -29,7 +29,7 @@ struct PostponedJobArgs {
 }
 
 impl Scheduler for TimerThreadScheduler {
-    fn start(&mut self) -> VALUE {
+    fn start(&self) -> VALUE {
         // Register the Postponed Job which does the actual work of collecting samples
         let postponed_job_args: Box<PostponedJobArgs> = Box::new(PostponedJobArgs {
             configuration: Arc::clone(&self.configuration),
@@ -53,7 +53,7 @@ impl Scheduler for TimerThreadScheduler {
         Qtrue.into()
     }
 
-    fn stop(&mut self) -> VALUE {
+    fn stop(&self) -> VALUE {
         // Stop the collector thread
         self.stop_requested.store(true, Ordering::Relaxed);
 

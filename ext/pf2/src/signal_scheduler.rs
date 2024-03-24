@@ -31,7 +31,7 @@ pub struct SignalHandlerArgs {
 }
 
 impl Scheduler for SignalScheduler {
-    fn start(&mut self) -> VALUE {
+    fn start(&self) -> VALUE {
         self.install_signal_handler();
 
         TimerInstaller::install_timer_to_ruby_threads(
@@ -42,7 +42,7 @@ impl Scheduler for SignalScheduler {
         Qtrue.into()
     }
 
-    fn stop(&mut self) -> VALUE {
+    fn stop(&self) -> VALUE {
         // Finalize
         match self.profile.try_write() {
             Ok(mut profile) => {
