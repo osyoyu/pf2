@@ -93,12 +93,17 @@ impl Session {
             )),
         };
 
+        let running = Arc::new(AtomicBool::new(false));
+
         let new_thread_watcher = match threads {
             configuration::Threads::All => {
                 let scheduler = Arc::clone(&scheduler);
+                let running = Arc::clone(&running);
                 Some(NewThreadWatcher::watch(move |thread: VALUE| {
-                    log::debug!("New Ruby thread detected: {:?}", thread);
-                    scheduler.on_new_thread(thread);
+                    if running.load(Ordering::Relaxed) {
+                        log::debug!("New Ruby thread detected: {:?}", thread);
+                        scheduler.on_new_thread(thread);
+                    }
                 }))
             }
             configuration::Threads::Targeted(_) => None,
@@ -108,7 +113,7 @@ impl Session {
             configuration,
             scheduler,
             profile,
-            running: Arc::new(AtomicBool::new(false)),
+            running,
             new_thread_watcher,
         }
     }
