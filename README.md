@@ -58,7 +58,7 @@ File.write("my_program.pf2profile", profile)
 Profiles can be visualized using the [Firefox Profiler](https://profiler.firefox.com/).
 
 ```console
-$ pf2 -o report.json my_program.pf2profile
+$ pf2 report -o report.json my_program.pf2profile
 ```
 
 ### Configuration
