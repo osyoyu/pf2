@@ -1,7 +1,7 @@
 use std::ffi::{c_int, c_void};
 use std::mem;
 use std::mem::ManuallyDrop;
-use std::ptr::null_mut;
+use std::ptr::{addr_of, null_mut};
 
 use rb_sys::*;
 
@@ -43,7 +43,7 @@ impl SessionRubyObject {
     // Extract the SessionRubyObject struct from a Ruby object
     unsafe fn get_struct_from(obj: VALUE) -> ManuallyDrop<Box<Self>> {
         unsafe {
-            let ptr = rb_check_typeddata(obj, &RBDATA);
+            let ptr = rb_check_typeddata(obj, addr_of!(RBDATA));
             ManuallyDrop::new(Box::from_raw(ptr as *mut SessionRubyObject))
         }
     }
@@ -55,7 +55,11 @@ impl SessionRubyObject {
         let rb_mPf2: VALUE = rb_define_module(cstr!("Pf2"));
         let rb_cSession = rb_define_class_under(rb_mPf2, cstr!("Session"), rb_cObject);
         // Wrap the struct into a Ruby object
-        rb_data_typed_object_wrap(rb_cSession, Box::into_raw(obj) as *mut c_void, &RBDATA)
+        rb_data_typed_object_wrap(
+            rb_cSession,
+            Box::into_raw(obj) as *mut c_void,
+            addr_of!(RBDATA),
+        )
     }
 
     unsafe extern "C" fn dmark(ptr: *mut c_void) {
