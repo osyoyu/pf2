@@ -10,6 +10,7 @@ mod profile_serializer;
 mod ringbuffer;
 mod sample;
 mod scheduler;
+mod serialization;
 mod session;
 #[cfg(target_os = "linux")]
 mod signal_scheduler;
