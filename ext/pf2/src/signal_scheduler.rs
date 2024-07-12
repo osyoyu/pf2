@@ -103,6 +103,7 @@ impl SignalScheduler {
         if err != 0 {
             panic!("sigaction failed: {}", err);
         }
+        log::debug!("Signal handler installed");
     }
 
     // Respond to the signal and collect a sample.
