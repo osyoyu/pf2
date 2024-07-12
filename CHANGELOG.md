@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.5.2] - 2024-07-13
+
 ### Fixed
 
 - Properly default to TimerThread scheduler on non-Linux environments.
