@@ -6,9 +6,16 @@ use rb_sys::*;
 
 use crate::util::cstr;
 
+#[cfg(target_os = "linux")]
 pub const DEFAULT_SCHEDULER: Scheduler = Scheduler::Signal;
-pub const DEFAULT_INTERVAL: Duration = Duration::from_millis(49);
+#[cfg(target_os = "linux")]
 pub const DEFAULT_TIME_MODE: TimeMode = TimeMode::CpuTime;
+#[cfg(not(target_os = "linux"))]
+pub const DEFAULT_SCHEDULER: Scheduler = Scheduler::TimerThread;
+#[cfg(not(target_os = "linux"))]
+pub const DEFAULT_TIME_MODE: TimeMode = TimeMode::WallTime;
+
+pub const DEFAULT_INTERVAL: Duration = Duration::from_millis(49);
 
 #[derive(Clone, Debug)]
 pub struct Configuration {
