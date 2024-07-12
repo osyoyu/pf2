@@ -23,6 +23,18 @@ impl ProfileSerializer2 {
     }
 
     pub fn serialize(&mut self, source: &crate::profile::Profile) -> String {
+        // Fill in meta fields
+        self.profile.start_timestamp_ns = source
+            .start_timestamp
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        self.profile.duration_ns = source
+            .end_instant
+            .unwrap()
+            .duration_since(source.start_instant)
+            .as_nanos();
+
         // Create a Sample for each sample collected
         for sample in source.samples.iter() {
             let mut stack: Vec<LocationIndex> = vec![];

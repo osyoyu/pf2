@@ -221,7 +221,7 @@ impl ProfileSerializer {
 
                     if merged_stack.is_empty() {
                         // This is the leaf node, record a Sample
-                        let elapsed_ns = (sample.timestamp - profile.start_timestamp).as_nanos();
+                        let elapsed_ns = (sample.timestamp - profile.start_instant).as_nanos();
                         thread_serializer.samples.push(ProfileSample {
                             elapsed_ns,
                             stack_tree_id: stack_tree.node_id,

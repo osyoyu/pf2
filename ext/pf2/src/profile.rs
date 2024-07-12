@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Instant, SystemTime};
 use std::{collections::HashSet, ptr::null_mut};
 
 use rb_sys::*;
@@ -15,7 +15,9 @@ const DEFAULT_RINGBUFFER_CAPACITY: usize = 320;
 
 #[derive(Debug)]
 pub struct Profile {
-    pub start_timestamp: Instant,
+    pub start_timestamp: SystemTime,
+    pub start_instant: Instant,
+    pub end_instant: Option<Instant>,
     pub samples: Vec<Sample>,
     pub temporary_sample_buffer: Ringbuffer,
     pub backtrace_state: BacktraceState,
@@ -35,7 +37,9 @@ impl Profile {
         };
 
         Self {
-            start_timestamp: Instant::now(),
+            start_timestamp: SystemTime::now(),
+            start_instant: Instant::now(),
+            end_instant: None,
             samples: vec![],
             temporary_sample_buffer: Ringbuffer::new(DEFAULT_RINGBUFFER_CAPACITY),
             backtrace_state,

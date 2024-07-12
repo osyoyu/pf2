@@ -61,6 +61,7 @@ impl Scheduler for TimerThreadScheduler {
         match self.profile.try_write() {
             Ok(mut profile) => {
                 profile.flush_temporary_sample_buffer();
+                profile.end_instant = Some(std::time::Instant::now());
             }
             Err(_) => {
                 println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
