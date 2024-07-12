@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Changed
+
+- The default sampling interval is now 9 ms (was originally 49 ms).
+  - 9 (and 49) are chosen to avoid lockstep sampling.
+
+
 ## [0.5.2] - 2024-07-13
 
 ### Fixed
