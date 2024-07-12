@@ -15,7 +15,7 @@ pub const DEFAULT_SCHEDULER: Scheduler = Scheduler::TimerThread;
 #[cfg(not(target_os = "linux"))]
 pub const DEFAULT_TIME_MODE: TimeMode = TimeMode::WallTime;
 
-pub const DEFAULT_INTERVAL: Duration = Duration::from_millis(49);
+pub const DEFAULT_INTERVAL: Duration = Duration::from_millis(9);
 
 #[derive(Clone, Debug)]
 pub struct Configuration {

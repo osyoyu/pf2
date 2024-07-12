@@ -127,10 +127,10 @@ impl Session {
         let interval_ms = unsafe { rb_num2long(value) };
         Duration::from_millis(interval_ms.try_into().unwrap_or_else(|_| {
             eprintln!(
-                "[Pf2] Warning: Specified interval ({}) is not valid. Using default value (49ms).",
+                "[Pf2] Warning: Specified interval ({}) is not valid. Using default value (9ms).",
                 interval_ms
             );
-            49
+            9
         }))
     }
 

@@ -6,7 +6,7 @@ class SessionTest < Minitest::Test
   def test_default_options
     config = Pf2::Session.new.configuration
     assert_equal(:signal, config[:scheduler])
-    assert_equal(49, config[:interval_ms])
+    assert_equal(9, config[:interval_ms])
     assert_equal(:cpu, config[:time_mode])
   end
 
