@@ -23,6 +23,7 @@ pub struct Configuration {
     pub interval: Duration,
     pub time_mode: TimeMode,
     pub target_ruby_threads: Threads,
+    pub use_experimental_serializer: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]

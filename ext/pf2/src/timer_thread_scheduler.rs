@@ -12,6 +12,7 @@ use crate::profile::Profile;
 use crate::profile_serializer::ProfileSerializer;
 use crate::sample::Sample;
 use crate::scheduler::Scheduler;
+use crate::serialization::serializer::ProfileSerializer2;
 use crate::session::configuration::{self, Configuration};
 use crate::util::*;
 
@@ -72,7 +73,11 @@ impl Scheduler for TimerThreadScheduler {
         let profile = self.profile.try_read().unwrap();
         log::debug!("Number of samples: {}", profile.samples.len());
 
-        let serialized = ProfileSerializer::serialize(&profile);
+        let serialized = if self.configuration.use_experimental_serializer {
+            ProfileSerializer2::new().serialize(&profile)
+        } else {
+            ProfileSerializer::serialize(&profile)
+        };
         let serialized = CString::new(serialized).unwrap();
         unsafe { rb_str_new_cstr(serialized.as_ptr()) }
     }
