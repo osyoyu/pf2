@@ -38,7 +38,7 @@ impl Session {
         unsafe {
             rb_scan_args(argc, argv, cstr!(":"), &kwargs);
         };
-        let mut kwargs_values: [VALUE; 4] = [Qnil.into(); 4];
+        let mut kwargs_values: [VALUE; 5] = [Qnil.into(); 5];
         unsafe {
             rb_get_kwargs(
                 kwargs,
@@ -47,10 +47,11 @@ impl Session {
                     rb_intern(cstr!("threads")),
                     rb_intern(cstr!("time_mode")),
                     rb_intern(cstr!("scheduler")),
+                    rb_intern(cstr!("use_experimental_serializer")),
                 ]
                 .as_mut_ptr(),
                 0,
-                4,
+                5,
                 kwargs_values.as_mut_ptr(),
             );
         };
@@ -59,12 +60,15 @@ impl Session {
         let threads = Self::parse_option_threads(kwargs_values[1]);
         let time_mode = Self::parse_option_time_mode(kwargs_values[2]);
         let scheduler = Self::parse_option_scheduler(kwargs_values[3]);
+        let use_experimental_serializer =
+            Self::parse_option_use_experimental_serializer(kwargs_values[4]);
 
         let configuration = Configuration {
             scheduler,
             interval,
             target_ruby_threads: threads.clone(),
             time_mode,
+            use_experimental_serializer,
         };
 
         match configuration.validate() {
@@ -205,6 +209,13 @@ impl Session {
             }
         }
         scheduler
+    }
+
+    fn parse_option_use_experimental_serializer(value: VALUE) -> bool {
+        if value == Qundef as VALUE {
+            return false;
+        }
+        RTEST(value)
     }
 
     pub fn start(&mut self) -> VALUE {

@@ -5,6 +5,7 @@ use crate::profile_serializer::ProfileSerializer;
 use crate::ruby_internal_apis::rb_thread_getcpuclockid;
 use crate::sample::Sample;
 use crate::scheduler::Scheduler;
+use crate::serialization::serializer::ProfileSerializer2;
 use crate::session::configuration::{self, Configuration};
 
 use core::panic;
@@ -46,6 +47,7 @@ impl Scheduler for SignalScheduler {
         match self.profile.try_write() {
             Ok(mut profile) => {
                 profile.flush_temporary_sample_buffer();
+                profile.end_instant = Some(std::time::Instant::now());
             }
             Err(_) => {
                 println!("[pf2 ERROR] stop: Failed to acquire profile lock.");
@@ -56,7 +58,11 @@ impl Scheduler for SignalScheduler {
         let profile = self.profile.try_read().unwrap();
         log::debug!("Number of samples: {}", profile.samples.len());
 
-        let serialized = ProfileSerializer::serialize(&profile);
+        let serialized = if self.configuration.use_experimental_serializer {
+            ProfileSerializer2::new().serialize(&profile)
+        } else {
+            ProfileSerializer::serialize(&profile)
+        };
         let serialized = CString::new(serialized).unwrap();
         unsafe { rb_str_new_cstr(serialized.as_ptr()) }
     }
