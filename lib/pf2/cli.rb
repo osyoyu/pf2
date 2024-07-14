@@ -55,7 +55,7 @@ module Pf2
       option_parser.parse!(argv)
 
       profile = JSON.parse(File.read(argv[0]), symbolize_names: true, max_nesting: false)
-      report = JSON.generate(Pf2::Reporter.new(profile).emit)
+      report = JSON.generate(Pf2::Reporter::FirefoxProfiler.new(profile).emit)
 
       if options[:output_file]
         File.write(options[:output_file], report)

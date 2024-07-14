@@ -28,7 +28,7 @@ module Pf2
         profile = JSON.parse(profile, symbolize_names: true, max_nesting: false)
         res.header['Content-Type'] = 'application/json'
         res.header['Access-Control-Allow-Origin'] = '*'
-        res.body = JSON.generate(Pf2::Reporter.new((profile)).emit)
+        res.body = JSON.generate(Pf2::Reporter::FirefoxProfiler.new((profile)).emit)
         Pf2.start
       end
 
