@@ -1,9 +1,13 @@
 ## [Unreleased]
 
+## [0.6.0] - 2024-07-15
+
 ### Changed
 
 - The default sampling interval is now 9 ms (was originally 49 ms).
-  - 9 (and 49) are chosen to avoid lockstep sampling.
+  - It is intentional that the default is not 10 (or 50) ms - this is to avoid lockstep sampling.
+- BREAKING: `Pf2::Reporter` has been moved to `Pf2::Reporter::FirefoxProfiler`.
+  - This is to make space for other planned reporters.
 
 
 ## [0.5.2] - 2024-07-13
