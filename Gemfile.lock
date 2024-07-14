@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    pf2 (0.5.2)
+    pf2 (0.6.0)
       rake-compiler
       rb_sys (~> 0.9.63)
       webrick
