@@ -147,12 +147,29 @@ impl ProfileSerializer2 {
                 None
             };
 
+            let start_address = Self::get_underlying_c_function_address(frame);
+
             Function {
                 implementation: FunctionImplementation::Ruby,
                 name: frame_full_label,
                 filename: frame_path,
                 start_lineno: frame_first_lineno,
-                start_address: None,
+                start_address,
+            }
+        }
+    }
+
+    fn get_underlying_c_function_address(frame: VALUE) -> Option<usize> {
+        unsafe {
+            let cme = frame as *mut crate::ruby_internal_apis::rb_callable_method_entry_struct;
+            let cme = &*cme; // *mut to reference
+
+            if (*(cme.def)).type_ == 1 {
+                // The cme is a Cfunc
+                Some((*(cme.def)).cfunc.func as usize)
+            } else {
+                // The cme is an ISeq (Ruby code) or some other type
+                None
             }
         }
     }
