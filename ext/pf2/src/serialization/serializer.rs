@@ -1,4 +1,4 @@
-use std::ffi::{c_char, CStr};
+use std::ffi::{c_char, CStr, CString};
 
 use rb_sys::*;
 
@@ -6,7 +6,7 @@ use super::profile::{
     Function, FunctionImplementation, FunctionIndex, Location, LocationIndex, Profile, Sample,
 };
 use crate::backtrace::Backtrace;
-use crate::util::RTEST;
+use crate::util::{cstr, RTEST};
 
 pub struct ProfileSerializer2 {
     profile: Profile,
@@ -25,7 +25,7 @@ impl ProfileSerializer2 {
         }
     }
 
-    pub fn serialize(&mut self, source: &crate::profile::Profile) -> String {
+    pub fn serialize(&mut self, source: &crate::profile::Profile) {
         // Fill in meta fields
         self.profile.start_timestamp_ns = source
             .start_timestamp
@@ -71,8 +71,6 @@ impl ProfileSerializer2 {
                 ruby_thread_id: Some(sample.ruby_thread),
             });
         }
-
-        serde_json::to_string(&self.profile).unwrap()
     }
 
     /// Returns the index of the function in `functions`.
@@ -182,5 +180,149 @@ impl ProfileSerializer2 {
             Some(Backtrace::backtrace_error_callback),
         );
         function.unwrap()
+    }
+
+    pub fn to_ruby_hash(&self) -> VALUE {
+        unsafe {
+            let hash: VALUE = rb_hash_new();
+
+            // profile[:start_timestamp_ns]
+            rb_hash_aset(
+                hash,
+                rb_id2sym(rb_intern(cstr!("start_timestamp_ns"))),
+                rb_int2inum(self.profile.start_timestamp_ns as isize),
+            );
+            // profile[:duration_ns]
+            rb_hash_aset(
+                hash,
+                rb_id2sym(rb_intern(cstr!("duration_ns"))),
+                rb_int2inum(self.profile.duration_ns as isize),
+            );
+
+            // profile[:samples]
+            let samples: VALUE = rb_ary_new();
+            for sample in self.profile.samples.iter() {
+                // sample[:stack]
+                let stack: VALUE = rb_ary_new();
+                for &location_index in sample.stack.iter() {
+                    rb_ary_push(stack, rb_int2inum(location_index as isize));
+                }
+                // sample[:native_stack]
+                let native_stack: VALUE = rb_ary_new();
+                for &location_index in sample.native_stack.iter() {
+                    rb_ary_push(native_stack, rb_int2inum(location_index as isize));
+                }
+                // sample[:ruby_thread_id]
+                let ruby_thread_id = if let Some(ruby_thread_id) = sample.ruby_thread_id {
+                    rb_int2inum(ruby_thread_id as isize)
+                } else {
+                    Qnil as VALUE
+                };
+
+                let sample_hash: VALUE = rb_hash_new();
+                rb_hash_aset(sample_hash, rb_id2sym(rb_intern(cstr!("stack"))), stack);
+                rb_hash_aset(
+                    sample_hash,
+                    rb_id2sym(rb_intern(cstr!("native_stack"))),
+                    native_stack,
+                );
+                rb_hash_aset(
+                    sample_hash,
+                    rb_id2sym(rb_intern(cstr!("ruby_thread_id"))),
+                    ruby_thread_id,
+                );
+
+                rb_ary_push(samples, sample_hash);
+            }
+            rb_hash_aset(hash, rb_id2sym(rb_intern(cstr!("samples"))), samples);
+
+            // profile[:locations]
+            let locations = rb_ary_new();
+            for location in self.profile.locations.iter() {
+                let location_hash: VALUE = rb_hash_new();
+                // location[:function_index]
+                rb_hash_aset(
+                    location_hash,
+                    rb_id2sym(rb_intern(cstr!("function_index"))),
+                    rb_int2inum(location.function_index as isize),
+                );
+                // location[:lineno]
+                rb_hash_aset(
+                    location_hash,
+                    rb_id2sym(rb_intern(cstr!("lineno"))),
+                    rb_int2inum(location.lineno as isize),
+                );
+                // location[:address]
+                rb_hash_aset(
+                    location_hash,
+                    rb_id2sym(rb_intern(cstr!("address"))),
+                    if let Some(address) = location.address {
+                        rb_int2inum(address as isize)
+                    } else {
+                        Qnil as VALUE
+                    },
+                );
+                rb_ary_push(locations, location_hash);
+            }
+            rb_hash_aset(hash, rb_id2sym(rb_intern(cstr!("locations"))), locations);
+
+            // profile[:functions]
+            let functions = rb_ary_new();
+            for function in self.profile.functions.iter() {
+                let function_hash: VALUE = rb_hash_new();
+                // function[:implementation]
+                rb_hash_aset(
+                    function_hash,
+                    rb_id2sym(rb_intern(cstr!("implementation"))),
+                    match function.implementation {
+                        FunctionImplementation::Ruby => rb_id2sym(rb_intern(cstr!("ruby"))),
+                        FunctionImplementation::Native => rb_id2sym(rb_intern(cstr!("native"))),
+                    },
+                );
+
+                // function[:name]
+                let name: VALUE = match &function.name {
+                    Some(name) => {
+                        let cstring = CString::new(name.as_str()).unwrap();
+                        rb_str_new_cstr(cstring.as_ptr())
+                    }
+                    None => Qnil as VALUE,
+                };
+                rb_hash_aset(function_hash, rb_id2sym(rb_intern(cstr!("name"))), name);
+                // function[:filename]
+                let filename: VALUE = match &function.filename {
+                    Some(filename) => {
+                        let cstring = CString::new(filename.as_str()).unwrap();
+                        rb_str_new_cstr(cstring.as_ptr())
+                    }
+                    None => Qnil as VALUE,
+                };
+                rb_hash_aset(function_hash, rb_id2sym(rb_intern(cstr!("filename"))), filename);
+                // function[:start_lineno]
+                rb_hash_aset(
+                    function_hash,
+                    rb_id2sym(rb_intern(cstr!("start_lineno"))),
+                    if let Some(start_lineno) = function.start_lineno {
+                        rb_int2inum(start_lineno as isize)
+                    } else {
+                        Qnil as VALUE
+                    },
+                );
+                // function[:start_address]
+                rb_hash_aset(
+                    function_hash,
+                    rb_id2sym(rb_intern(cstr!("start_address"))),
+                    if let Some(start_address) = function.start_address {
+                        rb_int2inum(start_address as isize)
+                    } else {
+                        Qnil as VALUE
+                    },
+                );
+                rb_ary_push(functions, function_hash);
+            }
+            rb_hash_aset(hash, rb_id2sym(rb_intern(cstr!("functions"))), functions);
+
+            hash
+        }
     }
 }
