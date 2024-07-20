@@ -14,6 +14,7 @@ pub struct Sample {
     pub line_count: i32,
     pub frames: [VALUE; MAX_STACK_DEPTH],
     pub linenos: [i32; MAX_STACK_DEPTH],
+    /// First element represents the backtrace depth.
     pub c_backtrace_pcs: [usize; MAX_C_STACK_DEPTH + 1],
 }
 
