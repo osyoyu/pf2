@@ -16,6 +16,7 @@ pub struct Sample {
     /// The stack leading to this sample.
     /// The leaf node will be stored at `stack[0]`.
     pub stack: Vec<LocationIndex>,
+    pub native_stack: Vec<LocationIndex>,
     pub ruby_thread_id: Option<u64>,
 }
 
@@ -42,5 +43,5 @@ pub struct Function {
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 pub enum FunctionImplementation {
     Ruby,
-    C,
+    Native,
 }
