@@ -2,7 +2,9 @@ use std::ffi::CStr;
 
 use rb_sys::*;
 
-use super::profile::{Function, FunctionImplementation, Location, LocationIndex, Profile, Sample};
+use super::profile::{
+    Function, FunctionImplementation, FunctionIndex, Location, LocationIndex, Profile, Sample,
+};
 use crate::util::RTEST;
 
 pub struct ProfileSerializer2 {
@@ -45,8 +47,9 @@ impl ProfileSerializer2 {
                 let frame: VALUE = sample.frames[i as usize];
                 let lineno: i32 = sample.linenos[i as usize];
 
-                // Get the Location corresponding to the frame.
-                let location_index = self.process_ruby_frame(frame, lineno);
+                let function = Self::extract_function_from_frame(frame);
+                let function_index = self.function_index_for(function);
+                let location_index = self.location_index_for(function_index, lineno);
 
                 stack.push(location_index);
             }
@@ -60,14 +63,10 @@ impl ProfileSerializer2 {
         serde_json::to_string(&self.profile).unwrap()
     }
 
-    /// Process a collected Ruby frame.
+    /// Returns the index of the function in `functions`.
     /// Calling this method will modify `self.profile` in place.
-    ///
-    /// Returns the index of the location in `locations`.
-    fn process_ruby_frame(&mut self, frame: VALUE, lineno: i32) -> LocationIndex {
-        // Build a Function corresponding to the frame, and get the index in `functions`
-        let function = Self::extract_function_from_frame(frame);
-        let function_index = match self
+    fn function_index_for(&mut self, function: Function) -> FunctionIndex {
+        match self
             .profile
             .functions
             .iter_mut()
@@ -78,15 +77,18 @@ impl ProfileSerializer2 {
                 self.profile.functions.push(function);
                 self.profile.functions.len() - 1
             }
-        };
+        }
+    }
 
+    /// Returns the index of the location in `locations`.
+    /// Calling this method will modify `self.profile` in place.
+    fn location_index_for(&mut self, function_index: FunctionIndex, lineno: i32) -> LocationIndex {
         // Build a Location based on (1) the Function and (2) the actual line hit during sampling.
         let location = Location {
             function_index,
             lineno,
             address: None,
         };
-        // Get the index of the location in `locations`
         match self
             .profile
             .locations
