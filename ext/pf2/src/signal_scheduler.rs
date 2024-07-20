@@ -58,13 +58,15 @@ impl Scheduler for SignalScheduler {
         let profile = self.profile.try_read().unwrap();
         log::debug!("Number of samples: {}", profile.samples.len());
 
-        let serialized = if self.configuration.use_experimental_serializer {
-            ProfileSerializer2::new().serialize(&profile)
+        if self.configuration.use_experimental_serializer {
+            let mut ser = ProfileSerializer2::new();
+            ser.serialize(&profile);
+            ser.to_ruby_hash()
         } else {
-            ProfileSerializer::serialize(&profile)
-        };
-        let serialized = CString::new(serialized).unwrap();
-        unsafe { rb_str_new_cstr(serialized.as_ptr()) }
+            let serialized = ProfileSerializer::serialize(&profile);
+            let string = CString::new(serialized).unwrap();
+            unsafe { rb_str_new_cstr(string.as_ptr()) }
+        }
     }
 
     fn on_new_thread(&self, thread: VALUE) {
