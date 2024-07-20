@@ -57,7 +57,7 @@ impl ProfileSerializer2 {
             let mut native_stack: Vec<LocationIndex> = vec![];
             let native_stack_depth = sample.c_backtrace_pcs[0];
             for i in 1..(native_stack_depth - 1) {
-                let pc = sample.c_backtrace_pcs[i + 1];
+                let pc = sample.c_backtrace_pcs[i];
                 let function = Self::extract_function_from_native_pc(pc, source);
 
                 let function_index = self.function_index_for(function);
