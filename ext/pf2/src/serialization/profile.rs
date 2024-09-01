@@ -18,6 +18,7 @@ pub struct Sample {
     pub stack: Vec<LocationIndex>,
     pub native_stack: Vec<LocationIndex>,
     pub ruby_thread_id: Option<u64>,
+    pub elapsed_us: u64,
 }
 
 /// Location represents a location (line) in the source code when a sample was captured.
