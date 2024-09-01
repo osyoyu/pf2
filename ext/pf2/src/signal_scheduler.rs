@@ -96,10 +96,7 @@ impl Scheduler for SignalScheduler {
 
 impl SignalScheduler {
     pub fn new(configuration: &Configuration, profile: Arc<RwLock<Profile>>) -> Self {
-        Self {
-            configuration: configuration.clone(),
-            profile,
-        }
+        Self { configuration: configuration.clone(), profile }
     }
 
     // Install signal handler for profiling events to the current process.

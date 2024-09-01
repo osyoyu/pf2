@@ -40,9 +40,6 @@ fn main() {
         .expect("Failed to write bindings");
 
     println!("cargo:rerun-if-changed=build.rs");
-    println!(
-        "cargo:rustc-link-search=native={}",
-        libbacktrace_src_dir.join(".libs").display()
-    );
+    println!("cargo:rustc-link-search=native={}", libbacktrace_src_dir.join(".libs").display());
     println!("cargo:rustc-link-lib=static=backtrace");
 }

@@ -17,9 +17,7 @@ impl Ringbuffer {
     pub fn new(capacity: usize) -> Self {
         Self {
             capacity,
-            buffer: std::iter::repeat_with(|| None)
-                .take(capacity + 1)
-                .collect::<Vec<_>>(),
+            buffer: std::iter::repeat_with(|| None).take(capacity + 1).collect::<Vec<_>>(),
             read_index: 0,
             write_index: 0,
         }

@@ -91,10 +91,9 @@ impl Session {
             configuration::Scheduler::Signal => {
                 Arc::new(SignalScheduler::new(&configuration, Arc::clone(&profile)))
             }
-            configuration::Scheduler::TimerThread => Arc::new(TimerThreadScheduler::new(
-                &configuration,
-                Arc::clone(&profile),
-            )),
+            configuration::Scheduler::TimerThread => {
+                Arc::new(TimerThreadScheduler::new(&configuration, Arc::clone(&profile)))
+            }
         };
 
         let running = Arc::new(AtomicBool::new(false));
@@ -113,13 +112,7 @@ impl Session {
             configuration::Threads::Targeted(_) => None,
         };
 
-        Session {
-            configuration,
-            scheduler,
-            profile,
-            running,
-            new_thread_watcher,
-        }
+        Session { configuration, scheduler, profile, running, new_thread_watcher }
     }
 
     fn parse_option_interval_ms(value: VALUE) -> Duration {
@@ -202,10 +195,7 @@ impl Session {
         // Raise an ArgumentError if the scheduler is not supported on the current platform
         if !cfg!(target_os = "linux") && scheduler == configuration::Scheduler::Signal {
             unsafe {
-                rb_raise(
-                    rb_eArgError,
-                    cstr!("Signal scheduler is not supported on this platform."),
-                )
+                rb_raise(rb_eArgError, cstr!("Signal scheduler is not supported on this platform."))
             }
         }
         scheduler

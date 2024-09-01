@@ -27,16 +27,10 @@ impl ProfileSerializer2 {
 
     pub fn serialize(&mut self, source: &crate::profile::Profile) {
         // Fill in meta fields
-        self.profile.start_timestamp_ns = source
-            .start_timestamp
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        self.profile.duration_ns = source
-            .end_instant
-            .unwrap()
-            .duration_since(source.start_instant)
-            .as_nanos();
+        self.profile.start_timestamp_ns =
+            source.start_timestamp.duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        self.profile.duration_ns =
+            source.end_instant.unwrap().duration_since(source.start_instant).as_nanos();
 
         // Create a Sample for each sample collected
         for sample in source.samples.iter() {
@@ -76,12 +70,7 @@ impl ProfileSerializer2 {
     /// Returns the index of the function in `functions`.
     /// Calling this method will modify `self.profile` in place.
     fn function_index_for(&mut self, function: Function) -> FunctionIndex {
-        match self
-            .profile
-            .functions
-            .iter_mut()
-            .position(|f| *f == function)
-        {
+        match self.profile.functions.iter_mut().position(|f| *f == function) {
             Some(index) => index,
             None => {
                 self.profile.functions.push(function);
@@ -94,17 +83,8 @@ impl ProfileSerializer2 {
     /// Calling this method will modify `self.profile` in place.
     fn location_index_for(&mut self, function_index: FunctionIndex, lineno: i32) -> LocationIndex {
         // Build a Location based on (1) the Function and (2) the actual line hit during sampling.
-        let location = Location {
-            function_index,
-            lineno,
-            address: None,
-        };
-        match self
-            .profile
-            .locations
-            .iter_mut()
-            .position(|l| *l == location)
-        {
+        let location = Location { function_index, lineno, address: None };
+        match self.profile.locations.iter_mut().position(|l| *l == location) {
             Some(index) => index,
             None => {
                 self.profile.locations.push(location);

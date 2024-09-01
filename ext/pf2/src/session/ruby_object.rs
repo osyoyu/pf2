@@ -55,11 +55,7 @@ impl SessionRubyObject {
         let rb_mPf2: VALUE = rb_define_module(cstr!("Pf2"));
         let rb_cSession = rb_define_class_under(rb_mPf2, cstr!("Session"), rb_cObject);
         // Wrap the struct into a Ruby object
-        rb_data_typed_object_wrap(
-            rb_cSession,
-            Box::into_raw(obj) as *mut c_void,
-            addr_of!(RBDATA),
-        )
+        rb_data_typed_object_wrap(rb_cSession, Box::into_raw(obj) as *mut c_void, addr_of!(RBDATA))
     }
 
     unsafe extern "C" fn dmark(ptr: *mut c_void) {

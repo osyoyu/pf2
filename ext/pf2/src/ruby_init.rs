@@ -10,10 +10,7 @@ use crate::util::*;
 extern "C" fn Init_pf2() {
     #[cfg(feature = "debug")]
     {
-        env_logger::builder()
-            .format_timestamp(None)
-            .format_module_path(false)
-            .init();
+        env_logger::builder().format_timestamp(None).format_module_path(false).init();
     }
 
     unsafe {

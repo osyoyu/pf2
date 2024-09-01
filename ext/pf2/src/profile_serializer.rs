@@ -29,11 +29,7 @@ impl ThreadProfile {
         ThreadProfile {
             thread_id,
             // The root node
-            stack_tree: StackTreeNode {
-                children: HashMap::new(),
-                node_id: 0,
-                frame_id: 0,
-            },
+            stack_tree: StackTreeNode { children: HashMap::new(), node_id: 0, frame_id: 0 },
             frame_table: HashMap::new(),
             samples: vec![],
         }
@@ -91,9 +87,7 @@ impl ProfileSerializer {
     pub fn serialize(profile: &Profile) -> String {
         let mut sequence = 1;
 
-        let mut serializer = ProfileSerializer {
-            threads: HashMap::new(),
-        };
+        let mut serializer = ProfileSerializer { threads: HashMap::new() };
 
         unsafe {
             // Process each sample
@@ -222,10 +216,9 @@ impl ProfileSerializer {
                     if merged_stack.is_empty() {
                         // This is the leaf node, record a Sample
                         let elapsed_ns = (sample.timestamp - profile.start_instant).as_nanos();
-                        thread_serializer.samples.push(ProfileSample {
-                            elapsed_ns,
-                            stack_tree_id: stack_tree.node_id,
-                        });
+                        thread_serializer
+                            .samples
+                            .push(ProfileSample { elapsed_ns, stack_tree_id: stack_tree.node_id });
                     }
 
                     // Register frame metadata to frame table, if not registered yet
