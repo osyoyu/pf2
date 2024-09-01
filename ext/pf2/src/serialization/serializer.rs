@@ -63,6 +63,7 @@ impl ProfileSerializer2 {
                 stack,
                 native_stack,
                 ruby_thread_id: Some(sample.ruby_thread),
+                elapsed_us: sample.timestamp.duration_since(source.start_instant).as_nanos() as u64,
             });
         }
     }
@@ -215,6 +216,8 @@ impl ProfileSerializer2 {
                 } else {
                     Qnil as VALUE
                 };
+                // sample[:elapsed_us]
+                let elapsed_us = rb_ull2inum(sample.elapsed_us);
 
                 let sample_hash: VALUE = rb_hash_new();
                 rb_hash_aset(sample_hash, rb_id2sym(rb_intern(cstr!("stack"))), stack);
@@ -228,6 +231,7 @@ impl ProfileSerializer2 {
                     rb_id2sym(rb_intern(cstr!("ruby_thread_id"))),
                     ruby_thread_id,
                 );
+                rb_hash_aset(sample_hash, rb_id2sym(rb_intern(cstr!("elapsed_us"))), elapsed_us);
 
                 rb_ary_push(samples, sample_hash);
             }
