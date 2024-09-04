@@ -18,7 +18,8 @@ module Pf2
     raise ArgumentError, "block required" unless block_given?
     start(threads: Thread.list)
     yield
-    stop
+    result = stop
     @@session = nil # let GC clean up the session
+    result
   end
 end
