@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'pf2'
 
 def takeuchi(x, y, z)

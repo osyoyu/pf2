@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 def system_with_timeout(command, timeout)
   pid = spawn(command, pgroup: true)
   pgid = Process.getpgid(pid)

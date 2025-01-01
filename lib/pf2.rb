@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require_relative 'pf2/pf2'
 require_relative 'pf2/session'
 require_relative 'pf2/version'

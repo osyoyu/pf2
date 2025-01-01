@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Changed
+
+- Prepended `frozen_string_literal: true` to all Ruby files.
+
 ## [0.6.0] - 2024-07-15
 
 ### Changed

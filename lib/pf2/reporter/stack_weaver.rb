@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Pf2
   module Reporter
     class StackWeaver
