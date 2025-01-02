@@ -32,7 +32,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'rake-compiler'
-  spec.add_dependency 'rb_sys', '~> 0.9.63'
+  spec.add_dependency 'rb_sys', '0.9.105'
   spec.add_dependency 'webrick'
 
   spec.add_development_dependency 'minitest'
