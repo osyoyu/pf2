@@ -3,6 +3,10 @@
 ### Changed
 
 - Prepended `frozen_string_literal: true` to all Ruby files.
+- Internals
+  - Updated rb-sys to 0.9.105.
+  - Synced libbacktrace with upstream as of 2024-08-06.
+
 
 ## [0.6.0] - 2024-07-15
 
