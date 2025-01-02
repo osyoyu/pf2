@@ -54,7 +54,7 @@ impl NewThreadWatcher {
 
     unsafe extern "C" fn on_thread_resume(
         _flag: rb_event_flag_t,
-        data: *const rb_internal_thread_event_data,
+        data: *const rb_internal_thread_event_data_t,
         custom_data: *mut c_void,
     ) {
         let ruby_thread: VALUE = unsafe { (*data).thread };
