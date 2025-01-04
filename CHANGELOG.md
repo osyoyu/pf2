@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## [0.7.1] - 2025-01-02
+
+### Fixed
+
+- Reverted Cargo.lock version to 3 to support older versions of Rust (<1.78).
+
 ## [0.7.0] - 2025-01-03
 
 ### Changed
