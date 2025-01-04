@@ -8,6 +8,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RB_SYS_CARGO_PROFILE: dev
+  PF2_AUTO_INSTALL_RUST_TOOLCHAIN: 'false'
 
 jobs:
   test:
