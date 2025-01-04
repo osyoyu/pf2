@@ -57,9 +57,19 @@ impl Session {
         };
 
         let interval = Self::parse_option_interval_ms(kwargs_values[0]);
-        let threads = Self::parse_option_threads(kwargs_values[1]);
         let time_mode = Self::parse_option_time_mode(kwargs_values[2]);
         let scheduler = Self::parse_option_scheduler(kwargs_values[3]);
+        let threads = match Self::parse_option_threads(kwargs_values[1]) {
+            Some(threads) => threads,
+            None => match scheduler {
+                // Only SignalScheduler supports the :all option
+                configuration::Scheduler::Signal => configuration::Threads::All,
+                // Default to a empty set for TimerThreadScheduler
+                configuration::Scheduler::TimerThread => {
+                    configuration::Threads::Targeted(HashSet::new())
+                }
+            },
+        };
         let use_experimental_serializer =
             Self::parse_option_use_experimental_serializer(kwargs_values[4]);
 
@@ -131,12 +141,14 @@ impl Session {
         }))
     }
 
-    fn parse_option_threads(value: VALUE) -> configuration::Threads {
-        if (value == Qundef as VALUE)
-            || (value == Qnil as VALUE)
-            || (value == unsafe { rb_id2sym(rb_intern(cstr!("all"))) })
-        {
-            return configuration::Threads::All;
+    fn parse_option_threads(value: VALUE) -> Option<configuration::Threads> {
+        if (value == Qundef as VALUE) || (value == Qnil as VALUE) {
+            // Return default
+            return None;
+        }
+
+        if value == unsafe { rb_id2sym(rb_intern(cstr!("all"))) } {
+            return Some(configuration::Threads::All);
         }
 
         let mut set: HashSet<VALUE> = HashSet::new();
@@ -145,7 +157,7 @@ impl Session {
                 set.insert(rb_ary_entry(value, i));
             }
         }
-        configuration::Threads::Targeted(set)
+        Some(configuration::Threads::Targeted(set))
     }
 
     fn parse_option_time_mode(value: VALUE) -> configuration::TimeMode {
