@@ -7,5 +7,6 @@ create_rust_makefile 'pf2/pf2' do |r|
   if ENV['PF2_FEATURES']
     r.features = ENV['PF2_FEATURES'].split(",")
   end
+  r.force_install_rust_toolchain = false
   r.auto_install_rust_toolchain = false
 end
