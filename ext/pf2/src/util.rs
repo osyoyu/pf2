@@ -1,6 +1,6 @@
 use core::mem::transmute;
 use rb_sys::*;
-use std::ffi::c_void;
+use std::{ffi::c_void, u128};
 
 // Convert str literal to C string literal
 macro_rules! cstr {
@@ -27,4 +27,5 @@ pub fn RTEST(v: VALUE) -> bool {
 
 extern "C" {
     pub fn extract_si_value_sival_ptr(info: *mut libc::siginfo_t) -> *mut c_void;
+    pub fn rb_ull2num(n: u128) -> VALUE;
 }
