@@ -53,11 +53,20 @@ module Pf2
         opts.on('-o', '--output FILE', 'Output file') do |path|
           options[:output_file] = path
         end
+        opts.on('--experimental-serializer', 'Enable the experimental serializer mode') do
+          options[:experimental_serializer] = true
+        end
       end
       option_parser.parse!(argv)
 
-      profile = JSON.parse(File.read(argv[0]), symbolize_names: true, max_nesting: false)
-      report = JSON.generate(Pf2::Reporter::FirefoxProfiler.new(profile).emit)
+      if options[:experimental_serializer]
+        profile = Marshal.load(File.read(argv[0]))
+        report = Pf2::Reporter::FirefoxProfilerSer2.new(profile).emit
+        report = JSON.generate(report)
+      else
+        profile = JSON.parse(File.read(argv[0]), symbolize_names: true, max_nesting: false)
+        report = JSON.generate(Pf2::Reporter::FirefoxProfiler.new(profile).emit)
+      end
 
       if options[:output_file]
         File.write(options[:output_file], report)
