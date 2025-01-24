@@ -12,7 +12,7 @@ module Pf2
       end
 
       def inspect
-        "" # TODO: provide something better
+        "#<#{self.class.name}>" # TODO: add sample count etc.
       end
 
       def emit
