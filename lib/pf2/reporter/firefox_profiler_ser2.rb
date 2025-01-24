@@ -69,7 +69,6 @@ module Pf2
           @samples = samples
 
           # Global state
-          @seq = 0
           @stack_tree = { :stack_id => nil }
           @reverse_stack_tree = []
           @string_table = {}
@@ -257,10 +256,6 @@ module Pf2
           return @string_table[str] if @string_table.has_key?(str)
           @string_table[str] = @string_table.length
           @string_table[str]
-        end
-
-        def incr
-          @seq += 1
         end
 
         def markers
