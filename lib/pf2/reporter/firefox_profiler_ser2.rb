@@ -12,7 +12,7 @@ module Pf2
       end
 
       def inspect
-        "#<#{self.class.name}>" # TODO: add sample count etc.
+        "#<#{self.class.name} (#{@profile[:samples].length} samples)>"
       end
 
       def emit
@@ -75,7 +75,7 @@ module Pf2
         end
 
         def inspect
-          "" # TODO: provide something better
+          "#<#{self.class.name} (#{@samples.length} samples)>"
         end
 
         def emit
