@@ -71,7 +71,7 @@ module Pf2
           # Global state
           @stack_tree = { :stack_id => nil }
           @reverse_stack_tree = []
-          @string_table = {}
+          @string_table = { nil => 0 }
         end
 
         def inspect
@@ -256,10 +256,11 @@ module Pf2
           @string_table.sort_by {|_, v| v}.map {|s| s[0] }
         end
 
+        # @string_table is a hash of { string => index }
         def string_id(str)
-          return @string_table[str] if @string_table.has_key?(str)
+          id = @string_table[str]
+          return id if id
           @string_table[str] = @string_table.length
-          @string_table[str]
         end
 
         def markers
