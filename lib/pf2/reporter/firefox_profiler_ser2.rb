@@ -136,7 +136,7 @@ module Pf2
           }
 
           @samples.each do |sample|
-            stack = [*sample[:stack].reverse]
+            stack = sample[:stack].reverse
             stack_id = @stack_tree.dig(*stack, :stack_id)
 
             ret[:stack] << stack_id
@@ -193,7 +193,7 @@ module Pf2
             column_number: [],
           }
 
-          @profile[:functions].each.with_index do |function, i|
+          @profile[:functions].each do |function|
             is_ruby = (function[:implementation] == :ruby)
 
             ret[:name] << string_id(function[:name])
@@ -220,27 +220,31 @@ module Pf2
           @profile[:samples].each do |sample|
             # Stack (Array of location indices) recorded in sample, reversed
             # example: [1, 2, 9] (1 is the root)
-            stack = [*sample[:stack].reverse]
+            stack = sample[:stack].reverse
 
-            # Traverse the stack tree
-            ptr = @stack_tree # pointer to the stack tree root
+            # Build the stack_table Array which Firefox Profiler requires.
+            # At the same time, build the stack tree for efficient traversal.
+
+            current_node = @stack_tree # the stack tree root
             stack.each do |location_index|
-              # Register the stack if it's not already registered
-              if ptr[location_index].nil?
-                # Assign a new stack id for the current stack
+              if current_node[location_index].nil?
+                # The tree node is unknown. Create it.
                 new_stack_id = ret[:frame].length # The position of the new stack in the stack_table array
-                ptr[location_index] = { stack_id: new_stack_id }
+                current_node[location_index] = { stack_id: new_stack_id }
 
+                # Retrieve the corresponding location and function from the profile
                 location = @profile[:locations][location_index]
                 function = @profile[:functions][location[:function_index]]
 
-                ret[:frame] << location[:function_index]
+                # Register the stack in the stack_table Array
+                ret[:frame] << location_index
                 ret[:category] << (function[:implementation] == :ruby ? 2 : 1)
                 ret[:subcategory] << nil
-                ret[:prefix] << ptr[:stack_id]
+                ret[:prefix] << current_node[:stack_id] # the parent's position in the stack_table array
               end
 
-              ptr = ptr[location_index]
+              # Update the current node to the child node
+              current_node = current_node[location_index]
             end
           end
 
