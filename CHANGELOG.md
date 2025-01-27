@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.8.0] - 2025-01-27
+
 ## Added
 
 - The new serializer (Ser2) is now available in `Pf2::Session#start` through the `use_experimental_serializer` option.
