@@ -48,6 +48,6 @@ class FirefoxProfilerSer2Test < Minitest::Test
     assert_equal([nil, 0, 1, 2, 3], report[:threads][0][:stackTable][:prefix])
     assert_equal(5, report[:threads][0][:frameTable][:length])
     assert_equal(5, report[:threads][0][:funcTable][:length])
-    assert_equal(['foo', 'main.rb', 'bar', 'baz', 'qux', 'quux'], report[:threads][0][:stringArray])
+    assert_equal([nil, 'foo', 'main.rb', 'bar', 'baz', 'qux', 'quux'], report[:threads][0][:stringArray])
   end
 end
