@@ -196,7 +196,7 @@ module Pf2
           @profile[:functions].each do |function|
             is_ruby = (function[:implementation] == :ruby)
 
-            ret[:name] << string_id(function[:name])
+            ret[:name] << string_id(function[:name] || "<unknown>")
             ret[:is_js] << is_ruby
             ret[:relevant_for_js] << false
             ret[:resource] << -1
