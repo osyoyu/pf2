@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+## Added
+
+- The new serializer (Ser2) is now available in `Pf2::Session#start` through the `use_experimental_serializer` option.
+  - This serializer is more efficient and has a smaller memory footprint than the default serializer.
+  - Ser2 still lacks some features, such as weaving of native stacks.
+
 ## [0.7.1] - 2025-01-02
 
 ### Fixed
