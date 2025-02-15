@@ -10,7 +10,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     minitest (5.21.2)
-    rake (13.0.6)
+    rake (13.2.1)
     rake-compiler (1.2.5)
       rake
     rb_sys (0.9.105)
@@ -22,7 +22,7 @@ PLATFORMS
 DEPENDENCIES
   minitest
   pf2!
-  rake (~> 13.0)
+  rake (~> 13.2)
 
 BUNDLED WITH
    2.4.19
