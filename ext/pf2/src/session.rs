@@ -242,6 +242,19 @@ impl Session {
         self.scheduler.stop()
     }
 
+    pub fn mark(&mut self, current_thread: VALUE, tag: String) -> VALUE {
+        match self.profile.try_write() {
+            Ok(mut profile) => {
+                profile.record_mark(current_thread, tag);
+                Qtrue.into()
+            },
+            Err(_) => {
+                log::debug!("mark: Failed to acquire profile lock");
+                Qfalse.into()
+            }
+        }
+    }
+
     pub fn dmark(&self) {
         self.scheduler.dmark()
     }

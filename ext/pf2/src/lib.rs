@@ -9,6 +9,7 @@ mod profile;
 mod profile_serializer;
 mod ringbuffer;
 mod sample;
+mod marker;
 mod scheduler;
 mod serialization;
 mod session;

@@ -36,5 +36,11 @@ extern "C" fn Init_pf2() {
             Some(to_ruby_cfunc_with_no_args(SessionRubyObject::rb_stop)),
             0,
         );
+        rb_define_method(
+            rb_mPf2_Session,
+            cstr!("marker"),
+            Some(to_ruby_cfunc_with_args(SessionRubyObject::rb_mark)),
+            -1,
+        )
     }
 }

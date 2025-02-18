@@ -32,6 +32,15 @@ impl ProfileSerializer2 {
         self.profile.duration_ns =
             source.end_instant.unwrap().duration_since(source.start_instant).as_nanos();
 
+        // Create markers
+        let rb_ary: VALUE = unsafe { rb_ary_new_capa(source.markers.len() as i64) };
+        for marker in source.markers.iter() {
+            unsafe {
+                let cstring = CString::new(marker.tag.as_str()).unwrap();
+                rb_ary_push(rb_ary, rb_str_new_cstr(cstring.as_ptr()));
+            }
+        }
+
         // Create a Sample for each sample collected
         for sample in source.samples.iter() {
             // Iterate over the Ruby stack

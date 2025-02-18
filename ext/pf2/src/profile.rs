@@ -8,6 +8,7 @@ use backtrace_sys2::backtrace_create_state;
 use super::backtrace::{Backtrace, BacktraceState};
 use super::ringbuffer::Ringbuffer;
 use super::sample::Sample;
+use super::marker::Marker;
 
 // Capacity large enough to hold 1 second worth of samples for 16 threads
 // 16 threads * 20 samples per second * 1 second = 320
@@ -20,6 +21,7 @@ pub struct Profile {
     pub end_instant: Option<Instant>,
     pub samples: Vec<Sample>,
     pub temporary_sample_buffer: Ringbuffer,
+    pub markers: Vec<Marker>,
     pub backtrace_state: BacktraceState,
     known_values: HashSet<VALUE>,
 }
@@ -42,6 +44,7 @@ impl Profile {
             end_instant: None,
             samples: vec![],
             temporary_sample_buffer: Ringbuffer::new(DEFAULT_RINGBUFFER_CAPACITY),
+            markers: vec![],
             backtrace_state,
             known_values: HashSet::new(),
         }
@@ -58,6 +61,12 @@ impl Profile {
             }
             self.samples.push(sample);
         }
+    }
+
+    pub fn record_mark(&mut self, current_thread: VALUE, tag: String) {
+        let marker = Marker::new(current_thread, tag);
+        println!("{:?}", marker);
+        self.markers.push(marker);
     }
 
     pub unsafe fn dmark(&self) {

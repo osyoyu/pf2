@@ -1,4 +1,4 @@
-use std::ffi::{c_int, c_void};
+use std::ffi::{c_int, c_void, CStr};
 use std::mem;
 use std::mem::ManuallyDrop;
 use std::ptr::{addr_of, null_mut};
@@ -36,6 +36,21 @@ impl SessionRubyObject {
         let mut obj = Self::get_struct_from(rbself);
         match &mut obj.session {
             Some(session) => session.stop(),
+            None => panic!("Session is not initialized"),
+        }
+    }
+
+    pub unsafe extern "C" fn rb_mark(argc: c_int, argv: *mut VALUE, rbself: VALUE) -> VALUE {
+        if argc != 1 {
+            rb_raise(rb_eArgError, cstr!("number of arguments do not match"));
+        }
+        let args = unsafe { std::slice::from_raw_parts_mut(argv, argc.try_into().unwrap()) };
+        let tag = CStr::from_ptr(rb_string_value_cstr(&mut args[0])).to_str().unwrap().to_owned();
+        let current_thread: VALUE = unsafe { rb_funcall(rb_cThread, rb_intern(cstr!("current")), 0) };
+
+        let mut obj = Self::get_struct_from(rbself);
+        match &mut obj.session {
+            Some(session) => session.mark(current_thread, tag),
             None => panic!("Session is not initialized"),
         }
     }
