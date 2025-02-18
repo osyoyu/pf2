@@ -35,6 +35,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency 'rb_sys', '0.9.105'
   spec.add_dependency 'webrick'
 
+  spec.add_development_dependency 'irb'
   spec.add_development_dependency 'minitest'
 
   # For more information and examples about making a new gem, check out our
