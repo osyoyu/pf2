@@ -103,7 +103,7 @@ impl SignalScheduler {
     fn install_signal_handler(&self) {
         let mut sa: libc::sigaction = unsafe { mem::zeroed() };
         sa.sa_sigaction = Self::signal_handler as usize;
-        sa.sa_flags = libc::SA_SIGINFO;
+        sa.sa_flags = libc::SA_SIGINFO | libc::SA_RESTART;
         let err = unsafe { libc::sigaction(libc::SIGALRM, &sa, null_mut()) };
         if err != 0 {
             panic!("sigaction failed: {}", err);
