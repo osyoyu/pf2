@@ -4,7 +4,7 @@ require 'minitest/test_task'
 
 task default: %i[]
 
-Rake::ExtensionTask.new 'pf2' do |ext|
+Rake::ExtensionTask.new 'pf2c' do |ext|
   ext.lib_dir = 'lib/pf2'
 end
 
