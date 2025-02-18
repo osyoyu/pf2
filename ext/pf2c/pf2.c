@@ -22,6 +22,7 @@ rb_pf2_session_start(VALUE self)
     struct sigaction sa;
     sa.sa_sigaction = sigprof_handler;
     sigemptyset(&sa.sa_mask);
+    sigaddset(&sa.sa_mask, SIGPROF); // Mask SIGPROFs when handler is running
     sa.sa_flags = SA_SIGINFO | SA_RESTART;
     if (sigaction(SIGPROF, &sa, NULL) == -1) {
         rb_raise(rb_eRuntimeError, "Failed to install signal handler");
