@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -7,6 +8,7 @@
 #include <ruby/debug.h>
 
 #include "pf2.h"
+#include "ringbuffer.h"
 
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 
@@ -32,7 +34,7 @@ rb_pf2_session_start(VALUE self)
     struct sigevent sev;
     sev.sigev_notify = SIGEV_SIGNAL;
     sev.sigev_signo = SIGPROF;
-    sev.sigev_value.sival_ptr = session->timer;
+    sev.sigev_value.sival_ptr = session; // Passed as info->si_value.sival_ptr
     if (timer_create(CLOCK_PROCESS_CPUTIME_ID, &sev, &session->timer) == -1) {
         rb_raise(rb_eRuntimeError, "Failed to create timer");
     }
@@ -61,10 +63,22 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     struct timespec sig_start_time;
     clock_gettime(CLOCK_MONOTONIC, &sig_start_time);
 #endif
+    struct pf2_session *session = info->si_value.sival_ptr;
 
-    VALUE buff[200];
-    int lines[200] = {0};
-    rb_profile_frames(0, 200, buff, lines);
+    // If garbage collection is in progress, don't collect samples.
+    if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
+        printf("Garbage collection is in progress. Skipping sample collection.\n");
+        return;
+    }
+
+    // Obtain the current stack from Ruby
+    struct pf2_sample sample = { 0 };
+    sample.depth = rb_profile_frames(0, 200, sample.cmes, sample.linenos);
+    // Copy the sample to the ringbuffer.
+    if (pf2_ringbuffer_push(session->rbuf, &sample) != 0) {
+        // Copy failed. The sample buffer is full.
+        printf("Sample buffer is full\n");
+    }
 
 #ifdef PF2_DEBUG
     struct timespec sig_end_time;
@@ -86,8 +100,19 @@ rb_pf2_session_stop(VALUE self)
     struct pf2_session *session;
     TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
 
+    // Disarm and delete the timer.
     if (timer_delete(session->timer) == -1) {
         rb_raise(rb_eRuntimeError, "Failed to delete timer");
+    }
+
+    struct pf2_sample sample;
+    // Copy a sample from ringbuffer
+    while (pf2_ringbuffer_pop(session->rbuf, &sample) == 0) {
+        rb_p(rb_str_new_cstr("----------"));
+        printf("depth: %d\n", sample.depth);
+        for (int i = 0; i < sample.depth; i++) {
+            rb_p(rb_profile_frame_full_label(sample.cmes[i]));
+        }
     }
 
     return Qtrue;
@@ -100,7 +125,52 @@ pf2_session_alloc(VALUE self)
     if (session == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate memory for session");
     }
+    session->rbuf = pf2_ringbuffer_new(1000);
+    atomic_store_explicit(&session->is_marking, false, memory_order_relaxed);
     return TypedData_Wrap_Struct(self, &pf2_session_type, session);
+}
+
+void
+pf2_session_dmark(void *sess)
+{
+    struct pf2_session *session = sess;
+
+    // Disallow sample collection during marking
+    atomic_store_explicit(&session->is_marking, true, memory_order_release);
+
+    // Iterate over all samples in the ringbuffer and mark them
+    struct pf2_ringbuffer *rbuf = session->rbuf;
+    int head = atomic_load_explicit(&rbuf->head, memory_order_acquire);
+    int tail = atomic_load_explicit(&rbuf->tail, memory_order_acquire);
+    while (head != tail) {
+        struct pf2_sample *sample = &rbuf->samples[head];
+        // TODO: Move this to mark function in pf2_sample
+        for (int i = 0; i < sample->depth; i++) {
+            rb_gc_mark(sample->cmes[i]);
+        }
+        head = (head + 1) % rbuf->size;
+    }
+
+    // Allow sample collection
+    atomic_store_explicit(&session->is_marking, false, memory_order_release);
+}
+
+void
+pf2_session_dfree(void *sess)
+{
+    struct pf2_session *session = sess;
+    pf2_ringbuffer_free(session->rbuf);
+    free(session);
+}
+
+size_t
+pf2_session_dsize(const void *sess)
+{
+    const struct pf2_session *session = sess;
+    return (
+        sizeof(struct pf2_session)
+        + sizeof(struct pf2_sample) * session->rbuf->size
+    );
 }
 
 RUBY_FUNC_EXPORTED void
