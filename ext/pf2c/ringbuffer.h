@@ -2,6 +2,7 @@
 #define RINGBUFFER_H
 
 #include <stdatomic.h>
+#include <stdbool.h>
 
 #include "pf2.h"
 
@@ -17,7 +18,7 @@ struct pf2_ringbuffer {
 struct pf2_ringbuffer * pf2_ringbuffer_new(int size);
 void pf2_ringbuffer_free(struct pf2_ringbuffer *ringbuf);
 // async-signal-safe
-int pf2_ringbuffer_push(struct pf2_ringbuffer *ringbuf, struct pf2_sample *sample);
-int pf2_ringbuffer_pop(struct pf2_ringbuffer *ringbuf, struct pf2_sample *out);
+bool pf2_ringbuffer_push(struct pf2_ringbuffer *ringbuf, struct pf2_sample *sample);
+bool pf2_ringbuffer_pop(struct pf2_ringbuffer *ringbuf, struct pf2_sample *out);
 
 #endif // RINGBUFFER_H

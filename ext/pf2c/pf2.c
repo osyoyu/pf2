@@ -1,4 +1,5 @@
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -72,7 +73,7 @@ sample_collector_thread(void *arg)
     while (session->is_running == true) {
         // Take samples from the ring buffer
         struct pf2_sample sample;
-        while (pf2_ringbuffer_pop(session->rbuf, &sample) == 0) {
+        while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
             if (session->samples_index >= 100) {
                 // Samples buffer is full.
                 // TODO: Expand the buffer
@@ -111,7 +112,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     struct pf2_sample sample = { 0 };
     sample.depth = rb_profile_frames(0, 200, sample.cmes, sample.linenos);
     // Copy the sample to the ringbuffer.
-    if (pf2_ringbuffer_push(session->rbuf, &sample) != 0) {
+    if (pf2_ringbuffer_push(session->rbuf, &sample) == false) {
         // Copy failed. The sample buffer is full.
         printf("Sample buffer is full\n");
     }
