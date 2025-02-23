@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
+#include <pthread.h>
 
 #include <ruby.h>
 #include <ruby/debug.h>
@@ -10,6 +11,7 @@
 #include "pf2.h"
 #include "ringbuffer.h"
 
+static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 
 VALUE rb_mPf2c;
@@ -19,6 +21,13 @@ rb_pf2_session_start(VALUE self)
 {
     struct pf2_session *session;
     TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
+
+    session->is_running = true;
+
+    // Spawn a collector thread which periodically wakes up and collects samples
+    if (pthread_create(session->collector_thread, NULL, sample_collector_thread, session) != 0) {
+        rb_raise(rb_eRuntimeError, "Failed to spawn sample collector thread");
+    }
 
     // Configure signal handler
     struct sigaction sa;
@@ -53,6 +62,33 @@ rb_pf2_session_start(VALUE self)
     }
 
     return Qtrue;
+}
+
+static void *
+sample_collector_thread(void *arg)
+{
+    struct pf2_session *session = arg;
+
+    while (session->is_running == true) {
+        // Take samples from the ring buffer
+        struct pf2_sample sample;
+        while (pf2_ringbuffer_pop(session->rbuf, &sample) == 0) {
+            if (session->samples_index >= 100) {
+                // Samples buffer is full.
+                // TODO: Expand the buffer
+                break;
+            }
+
+            session->samples[session->samples_index++] = sample;
+        }
+
+        // Sleep for 100 ms
+        // TODO: Replace with high watermark callback
+        struct timespec ts = { .tv_sec = 0, .tv_nsec = 10 * 1000000, }; // 10 ms
+        nanosleep(&ts, NULL);
+    }
+
+    return NULL;
 }
 
 // async-signal-safe
@@ -105,13 +141,15 @@ rb_pf2_session_stop(VALUE self)
         rb_raise(rb_eRuntimeError, "Failed to delete timer");
     }
 
-    struct pf2_sample sample;
-    // Copy a sample from ringbuffer
-    while (pf2_ringbuffer_pop(session->rbuf, &sample) == 0) {
+    // Terminate the collector thread
+    session->is_running = false;
+    pthread_join(*session->collector_thread, NULL);
+
+    for (int i = 0; i < session->samples_index; i++) {
         rb_p(rb_str_new_cstr("----------"));
-        printf("depth: %d\n", sample.depth);
-        for (int i = 0; i < sample.depth; i++) {
-            rb_p(rb_profile_frame_full_label(sample.cmes[i]));
+        printf("depth: %d\n", session->samples[i].depth);
+        for (int j = 0; j < session->samples[i].depth; j++) {
+            rb_p(rb_profile_frame_full_label(session->samples[i].cmes[j]));
         }
     }
 
@@ -127,6 +165,8 @@ pf2_session_alloc(VALUE self)
     }
     session->rbuf = pf2_ringbuffer_new(1000);
     atomic_store_explicit(&session->is_marking, false, memory_order_relaxed);
+    session->collector_thread = malloc(sizeof(pthread_t));
+
     return TypedData_Wrap_Struct(self, &pf2_session_type, session);
 }
 
@@ -140,15 +180,24 @@ pf2_session_dmark(void *sess)
 
     // Iterate over all samples in the ringbuffer and mark them
     struct pf2_ringbuffer *rbuf = session->rbuf;
+    struct pf2_sample *sample;
     int head = atomic_load_explicit(&rbuf->head, memory_order_acquire);
     int tail = atomic_load_explicit(&rbuf->tail, memory_order_acquire);
     while (head != tail) {
-        struct pf2_sample *sample = &rbuf->samples[head];
+        sample = &rbuf->samples[head];
         // TODO: Move this to mark function in pf2_sample
         for (int i = 0; i < sample->depth; i++) {
             rb_gc_mark(sample->cmes[i]);
         }
         head = (head + 1) % rbuf->size;
+    }
+
+    // Iterate over all samples in the samples array and mark them
+    for (int i = 0; i < session->samples_index; i++) {
+        sample = &session->samples[i];
+        for (int i = 0; i < sample->depth; i++) {
+            rb_gc_mark(sample->cmes[i]);
+        }
     }
 
     // Allow sample collection

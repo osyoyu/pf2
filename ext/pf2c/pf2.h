@@ -20,9 +20,13 @@ struct pf2_sample {
 };
 
 struct pf2_session {
+    bool is_running;
     timer_t timer;
     struct pf2_ringbuffer *rbuf;
     atomic_bool is_marking; // Whether garbage collection is in progress
+    pthread_t *collector_thread;
+    struct pf2_sample samples[100]; // TODO: Make this dynamic
+    int samples_index;
 };
 
 static const rb_data_type_t pf2_session_type = {
