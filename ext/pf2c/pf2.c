@@ -121,12 +121,9 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     clock_gettime(CLOCK_MONOTONIC, &sig_end_time);
 
     // Calculate elapsed time in nanoseconds
-    long elapsed_ns =
-      (sig_end_time.tv_sec - sig_start_time.tv_sec) * 1000000000L +
-      (sig_end_time.tv_nsec - sig_start_time.tv_nsec);
-
-    // TODO: Store signal handler execution time somewhere
-    printf("Signal handler execution time: %ld ns\n", elapsed_ns);
+    sample.consumed_time_ns =
+        (sig_end_time.tv_sec - sig_start_time.tv_sec) * 1000000000L +
+        (sig_end_time.tv_nsec - sig_start_time.tv_nsec);
 #endif
 }
 
