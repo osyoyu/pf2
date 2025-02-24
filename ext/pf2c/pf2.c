@@ -5,7 +5,7 @@
 VALUE rb_mPf2c;
 
 RUBY_FUNC_EXPORTED void
-Init_pf2c(void)
+Init_pf2(void)
 {
     rb_mPf2c = rb_define_module("Pf2c");
     VALUE rb_mPf2c_cSession = rb_define_class_under(rb_mPf2c, "Session", rb_cObject);

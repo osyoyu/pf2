@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
   spec.license = 'MIT'
   spec.required_ruby_version = '>= 3.3.0'
 
-  spec.extensions = ['ext/pf2c/extconf.rb']
+  spec.extensions = ['ext/pf2/extconf.rb']
 
   spec.metadata['allowed_push_host'] = 'https://rubygems.org'
 
