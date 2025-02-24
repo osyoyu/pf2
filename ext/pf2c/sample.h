@@ -7,7 +7,8 @@ struct pf2_sample {
     int depth;
     VALUE cmes[200];
     int linenos[200];
-    long consumed_time_ns;
+    uint64_t consumed_time_ns;
+    uint64_t timestamp_ns;
 };
 
 #endif // PF2_SAMPLE_H
