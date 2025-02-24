@@ -1,10 +1,10 @@
-#ifndef RINGBUFFER_H
-#define RINGBUFFER_H
+#ifndef PF2_RINGBUFFER_H
+#define PF2_RINGBUFFER_H
 
 #include <stdatomic.h>
 #include <stdbool.h>
 
-#include "pf2.h"
+#include "sample.h"
 
 // A lock-free ringbuffer for storing pf2_sample structs.
 // Thread safe for single-producer single-consumer (SPSC) use.
