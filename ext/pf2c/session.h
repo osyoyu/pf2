@@ -15,8 +15,11 @@ struct pf2_session {
     struct pf2_ringbuffer *rbuf;
     atomic_bool is_marking; // Whether garbage collection is in progress
     pthread_t *collector_thread;
-    struct pf2_sample samples[2000]; // TODO: Make this dynamic
-    int samples_index;
+
+    struct pf2_sample *samples; // Dynamic array of samples
+    size_t samples_index;
+    size_t samples_capacity;    // Current capacity of the samples array
+
     struct timespec start_time_realtime;
     struct timespec start_time; // When profiling started
     uint64_t duration_ns; // Duration of profiling in nanoseconds

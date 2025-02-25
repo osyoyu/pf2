@@ -71,7 +71,7 @@ pf2_ser_prepare(struct pf2_ser *serializer, struct pf2_session *session) {
     serializer->duration_ns = session->duration_ns;
 
     // Process samples
-    for (int i = 0; i < session->samples_index; i++) {
+    for (size_t i = 0; i < session->samples_index; i++) {
         struct pf2_sample *sample = &session->samples[i];
         ensure_samples_capacity(serializer);
 

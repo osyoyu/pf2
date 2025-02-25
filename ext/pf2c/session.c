@@ -15,6 +15,7 @@
 
 static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
+bool ensure_sample_capacity(struct pf2_session *session);
 
 VALUE
 rb_pf2_session_start(VALUE self)
@@ -77,11 +78,11 @@ sample_collector_thread(void *arg)
         // Take samples from the ring buffer
         struct pf2_sample sample;
         while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
-            if (session->samples_index >= 2000) {
-                // Samples buffer is full.
-                // TODO: Expand the buffer
+            // Ensure we have capacity before adding a new sample
+            if (!ensure_sample_capacity(session)) {
+                // Failed to expand buffer
 #ifdef PF2_DEBUG
-                printf("Sample buffer is full. Dropping sample\n");
+                printf("Failed to expand sample buffer. Dropping sample\n");
 #endif
                 break;
             }
@@ -147,6 +148,31 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 #endif
 }
 
+// Ensures that the session's sample array has capacity for at least one more sample
+// Returns true if successful, false if memory allocation failed
+bool
+ensure_sample_capacity(struct pf2_session *session)
+{
+    // Check if we need to expand
+    if (session->samples_index < session->samples_capacity) {
+        return true;
+    }
+
+    // Calculate new size (double the current size)
+    size_t new_capacity = session->samples_capacity * 2;
+
+    // Reallocate the array
+    struct pf2_sample *new_samples = realloc(session->samples, new_capacity * sizeof(struct pf2_sample));
+    if (new_samples == NULL) {
+        return false;
+    }
+
+    session->samples = new_samples;
+    session->samples_capacity = new_capacity;
+
+    return true;
+}
+
 VALUE
 rb_pf2_session_stop(VALUE self)
 {
@@ -183,12 +209,28 @@ pf2_session_alloc(VALUE self)
 {
     struct pf2_session *session = malloc(sizeof(struct pf2_session));
     if (session == NULL) {
-        rb_raise(rb_eNoMemError, "Failed to allocate memory for session");
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
+
     session->rbuf = pf2_ringbuffer_new(1000);
+    if (session->rbuf == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
+
     atomic_store_explicit(&session->is_marking, false, memory_order_relaxed);
     session->collector_thread = malloc(sizeof(pthread_t));
+    if (session->collector_thread == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
+
     session->duration_ns = 0;
+
+    session->samples_index = 0;
+    session->samples_capacity = 500; // 10 seconds worth of samples at 50 Hz
+    session->samples = malloc(sizeof(struct pf2_sample) * session->samples_capacity);
+    if (session->samples == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
 
     return TypedData_Wrap_Struct(self, &pf2_session_type, session);
 }
@@ -216,7 +258,7 @@ pf2_session_dmark(void *sess)
     }
 
     // Iterate over all samples in the samples array and mark them
-    for (int i = 0; i < session->samples_index; i++) {
+    for (size_t i = 0; i < session->samples_index; i++) {
         sample = &session->samples[i];
         for (int i = 0; i < sample->depth; i++) {
             rb_gc_mark(sample->cmes[i]);
@@ -232,6 +274,8 @@ pf2_session_dfree(void *sess)
 {
     struct pf2_session *session = sess;
     pf2_ringbuffer_free(session->rbuf);
+    free(session->samples);
+    free(session->collector_thread);
     free(session);
 }
 
@@ -241,6 +285,7 @@ pf2_session_dsize(const void *sess)
     const struct pf2_session *session = sess;
     return (
         sizeof(struct pf2_session)
+        + sizeof(struct pf2_sample) * session->samples_capacity
         + sizeof(struct pf2_sample) * session->rbuf->size
     );
 }
