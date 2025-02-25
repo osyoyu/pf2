@@ -15,8 +15,12 @@ jobs:
       matrix:
         os: ['ubuntu-20.04', 'ubuntu-22.04', 'ubuntu-24.04']
         ruby-version: ['3.3', '3.4']
+        pf2_variant: ['pf2', 'pf2c']
 
     runs-on: ${{ matrix.os }}
+
+    env:
+      PF2_PF2C: ${{ matrix.pf2_variant == 'pf2c' && '1' || '0' }}
 
     steps:
       - uses: actions/checkout@v4
