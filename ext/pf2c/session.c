@@ -272,6 +272,7 @@ pf2_session_dmark(void *sess)
 void
 pf2_session_dfree(void *sess)
 {
+    // TODO: Ensure the uninstall process is complete before freeing the session
     struct pf2_session *session = sess;
     pf2_ringbuffer_free(session->rbuf);
     free(session->samples);
