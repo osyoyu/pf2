@@ -11,4 +11,6 @@ struct pf2_sample {
     uint64_t timestamp_ns;
 };
 
+bool pf2_sample_capture(struct pf2_sample *sample);
+
 #endif // PF2_SAMPLE_H

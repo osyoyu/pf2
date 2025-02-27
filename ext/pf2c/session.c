@@ -10,6 +10,7 @@
 #include <ruby.h>
 #include <ruby/debug.h>
 
+#include "sample.h"
 #include "session.h"
 #include "serializer.h"
 
@@ -120,19 +121,20 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 
     struct pf2_sample sample = { 0 };
 
-    // Record the current time
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    sample.timestamp_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+    if (pf2_sample_capture(&sample) == false) {
+#ifdef PF2_DEBUG
+        printf("Dropping sample: Failed to capture sample\n");
+#endif
+        return;
+    }
 
-    // Obtain the current stack from Ruby
-    sample.depth = rb_profile_frames(0, 200, sample.cmes, sample.linenos);
-    // Copy the sample to the ringbuffer.
+    // Copy the sample to the ringbuffer
     if (pf2_ringbuffer_push(session->rbuf, &sample) == false) {
         // Copy failed. The sample buffer is full.
 #ifdef PF2_DEBUG
         printf("Dropping sample: Sample buffer is full\n");
 #endif
+        return;
     }
 
 #ifdef PF2_DEBUG
