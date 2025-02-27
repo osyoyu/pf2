@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
   spec.files = Dir.chdir(__dir__) do
-    `git ls-files -z`.split("\x0").reject do |f|
+    `git ls-files -z --recurse-submodules`.split("\x0").reject do |f|
       (File.expand_path(f) == __FILE__) ||
         f.start_with?(*%w[bin/ test/ spec/ .git Gemfile])
     end
@@ -32,6 +32,7 @@ Gem::Specification.new do |spec|
   spec.require_paths = ['lib']
 
   spec.add_dependency 'rake-compiler'
+  spec.add_dependency 'mini_portile2'
   spec.add_dependency 'rb_sys', '0.9.105'
   spec.add_dependency 'webrick'
 
