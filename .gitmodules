@@ -1,0 +1,3 @@
+[submodule "vendor/libbacktrace"]
+	path = vendor/libbacktrace
+	url = git@github.com:ianlancetaylor/libbacktrace.git

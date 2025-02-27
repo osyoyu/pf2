@@ -10,6 +10,7 @@
 #include <ruby.h>
 #include <ruby/debug.h>
 
+#include "backtrace_state.h"
 #include "sample.h"
 #include "session.h"
 #include "serializer.h"
@@ -209,6 +210,14 @@ rb_pf2_session_stop(VALUE self)
 VALUE
 pf2_session_alloc(VALUE self)
 {
+    // Initialize state for libbacktrace
+    if (global_backtrace_state == NULL) {
+        global_backtrace_state = backtrace_create_state("pf2", 1, pf2_backtrace_print_error, NULL);
+        if (global_backtrace_state == NULL) {
+            rb_raise(rb_eRuntimeError, "Failed to initialize libbacktrace");
+        }
+    }
+
     struct pf2_session *session = malloc(sizeof(struct pf2_session));
     if (session == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
