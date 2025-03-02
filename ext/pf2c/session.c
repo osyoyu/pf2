@@ -10,6 +10,8 @@
 #include <ruby.h>
 #include <ruby/debug.h>
 
+#include <backtrace.h>
+
 #include "backtrace_state.h"
 #include "sample.h"
 #include "session.h"
