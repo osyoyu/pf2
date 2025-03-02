@@ -1,16 +1,23 @@
-#include <ruby.h>
-#include <ruby/debug.h>
 #include <time.h>
 #include <stdint.h>
 #include <string.h>
 
+#include <ruby.h>
+#include <ruby/debug.h>
+
+#include <backtrace.h>
+
+#include "backtrace_state.h"
 #include "serializer.h"
 #include "session.h"
 #include "sample.h"
 
 static struct pf2_ser_function extract_function_from_ruby_frame(VALUE frame);
-static size_t function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function);
-static size_t location_index_for(struct pf2_ser *serializer, size_t function_index, int32_t lineno);
+static struct pf2_ser_function extract_function_from_native_pc(uintptr_t pc);
+// static int backtrace_pcinfo_callback(void *data, uintptr_t pc, const char *filename, int lineno, const char *function);
+static void pf2_backtrace_syminfo_callback(void *data, uintptr_t pc, const char *symname, uintptr_t symval, uintptr_t symsize);
+static int function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function);
+static int location_index_for(struct pf2_ser *serializer, int function_index, int32_t lineno);
 static void ensure_samples_capacity(struct pf2_ser *serializer);
 static void ensure_locations_capacity(struct pf2_ser *serializer);
 static void ensure_functions_capacity(struct pf2_ser *serializer);
@@ -76,14 +83,12 @@ pf2_ser_prepare(struct pf2_ser *serializer, struct pf2_session *session) {
         ensure_samples_capacity(serializer);
 
         struct pf2_ser_sample *ser_sample = &serializer->samples[serializer->samples_count++];
-        ser_sample->stack = malloc(sizeof(size_t) * sample->depth);
-        ser_sample->stack_count = sample->depth;
-        ser_sample->native_stack = NULL;  // Not handling native stack in this version
-        ser_sample->native_stack_count = 0;
         ser_sample->ruby_thread_id = 0; // TODO: Add thread ID support
         ser_sample->elapsed_ns = sample->timestamp_ns - serializer->start_timestamp_ns;
 
-        // Process Ruby stack frames
+        // Copy and process Ruby stack frames
+        ser_sample->stack = malloc(sizeof(size_t) * sample->depth);
+        ser_sample->stack_count = sample->depth;
         for (int j = 0; j < sample->depth; j++) {
             VALUE frame = sample->cmes[j];
             int32_t lineno = sample->linenos[j];
@@ -94,6 +99,24 @@ pf2_ser_prepare(struct pf2_ser *serializer, struct pf2_session *session) {
 
             ser_sample->stack[j] = location_index;
         }
+
+        // Copy and process native stack frames, if any
+        if (sample->native_stack_depth > 0) {
+            ser_sample->native_stack = malloc(sizeof(size_t) * sample->native_stack_depth);
+            ser_sample->native_stack_count = sample->native_stack_depth;
+
+            for (size_t j = 0; j < sample->native_stack_depth; j++) {
+                struct pf2_ser_function func = extract_function_from_native_pc(sample->native_stack[j]);
+                size_t function_index = function_index_for(serializer, &func);
+                size_t location_index = location_index_for(serializer, function_index, 0);
+
+                ser_sample->native_stack[j] = location_index;
+            }
+        } else {
+            ser_sample->native_stack = NULL;
+            ser_sample->native_stack_count = 0;
+        }
+
     }
 }
 
@@ -118,8 +141,14 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
         }
         rb_hash_aset(sample_hash, ID2SYM(rb_intern("stack")), stack);
 
-        // Add empty native stack (not handling in this version)
-        rb_hash_aset(sample_hash, ID2SYM(rb_intern("native_stack")), rb_ary_new());
+        // Add native stack frames
+        VALUE native_stack = rb_ary_new_capa(sample->native_stack_count);
+        if (sample->native_stack != NULL) {
+            for (size_t j = 0; j < sample->native_stack_count; j++) {
+                rb_ary_push(native_stack, ULL2NUM(sample->native_stack[j]));
+            }
+        }
+        rb_hash_aset(sample_hash, ID2SYM(rb_intern("native_stack")), native_stack);
 
         // Add thread ID and elapsed time
         rb_hash_aset(
@@ -164,7 +193,7 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
         rb_hash_aset(
             function_hash,
             ID2SYM(rb_intern("implementation")),
-            ID2SYM(rb_intern("ruby"))
+            function->implementation == IMPLEMENTATION_RUBY ? ID2SYM(rb_intern("ruby")) : ID2SYM(rb_intern("native"))
         ); // TODO: C functions
         rb_hash_aset(
             function_hash,
@@ -223,9 +252,59 @@ extract_function_from_ruby_frame(VALUE frame) {
     return func;
 }
 
+static struct pf2_ser_function
+extract_function_from_native_pc(uintptr_t pc) {
+    struct pf2_ser_function func;
+    func.implementation = IMPLEMENTATION_NATIVE;
+
+    func.start_address = 0;
+    func.name = NULL;
+    func.filename = NULL;
+    func.start_lineno = 0;
+
+    // Use libbacktrace to get function details
+    struct backtrace_state *state = global_backtrace_state;
+    assert(state != NULL);
+    backtrace_syminfo(state, pc, pf2_backtrace_syminfo_callback, pf2_backtrace_print_error, &func);
+
+    // TODO: backtrace_pcinfo could give us more information, such as filenames and linenos.
+    // Maybe try pcinfo first, then use syminfo as a fallback?
+
+    return func;
+}
+
+// Full callback for syminfo
+static void
+pf2_backtrace_syminfo_callback(void *data, uintptr_t pc, const char *symname, uintptr_t symval, uintptr_t symsize) {
+    struct pf2_ser_function *func = (struct pf2_ser_function *)data;
+
+    if (symname != NULL) {
+        func->name = strdup(symname);
+    }
+    func->start_address = symval;
+
+    return;
+}
+
+// static int
+// backtrace_pcinfo_callback(void *data, uintptr_t pc, const char *filename, int lineno, const char *function) {
+//     struct pf2_ser_function *func = (struct pf2_ser_function *)data;
+
+//     if (function) {
+//         func->name = strdup(function);
+//     }
+//     func->start_lineno = lineno;
+//     if (filename) {
+//         func->filename = strdup(filename);
+//     }
+
+//     // Return non-zero to stop after first match
+//     return 1;
+// }
+
 // Returns the index of the function in `functions`.
 // Calling this method will modify `serializer->profile` in place.
-static size_t
+static int
 function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function) {
     for (size_t i = 0; i < serializer->functions_count; i++) {
         struct pf2_ser_function *existing = &serializer->functions[i];
@@ -253,8 +332,8 @@ function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function
 
 // Returns the index of the location in `locations`.
 // Calling this method will modify `self.profile` in place.
-static size_t
-location_index_for(struct pf2_ser *serializer, size_t function_index, int32_t lineno) {
+static int
+location_index_for(struct pf2_ser *serializer, int function_index, int32_t lineno) {
     for (size_t i = 0; i < serializer->locations_count; i++) {
         struct pf2_ser_location *existing = &serializer->locations[i];
         if (existing->function_index == function_index && existing->lineno == lineno) {

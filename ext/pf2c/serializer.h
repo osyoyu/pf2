@@ -6,23 +6,23 @@
 #include "session.h"
 
 struct pf2_ser_sample {
-    size_t *stack;
+    int *stack;
     size_t stack_count;
-    size_t *native_stack;
+    int *native_stack;
     size_t native_stack_count;
     size_t ruby_thread_id;
     uint64_t elapsed_ns;
 };
 
 struct pf2_ser_location {
-    size_t function_index;
+    int function_index;
     int32_t lineno;
     size_t address;
 };
 
 enum function_implementation {
     IMPLEMENTATION_RUBY,
-    // IMPLEMENTATION_NATIVE
+    IMPLEMENTATION_NATIVE
 };
 
 struct pf2_ser_function {
