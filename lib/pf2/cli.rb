@@ -19,6 +19,8 @@ module Pf2
       case subcommand
       when 'report'
         subcommand_report(argv)
+      when 'annotate'
+        subcommand_annotate(argv)
       when 'serve'
         subcommand_serve(argv)
       when 'version'
@@ -73,6 +75,26 @@ module Pf2
       else
         puts report
       end
+
+      return 0
+    end
+
+    def subcommand_annotate(argv)
+      options = {}
+      option_parser = OptionParser.new do |opts|
+        opts.banner = "Usage: pf2 report [options] COMMAND"
+        opts.on('-h', '--help', 'Prints this help') do
+          puts opts
+          return 0
+        end
+        opts.on('-d', '--source-directory DIR', 'Path to the source directory') do |dir|
+          options[:source_directory] = dir
+        end
+      end
+      option_parser.parse!(argv)
+
+      profile = Marshal.load(File.binread(argv[0]))
+      Pf2::Reporter::Annotate.new(profile, options[:source_directory] || '.').annotate
 
       return 0
     end
