@@ -7,3 +7,4 @@
 *.bundle
 *.o
 *.so
+*.pf2prof
