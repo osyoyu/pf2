@@ -6,6 +6,7 @@
 
 #include <ruby.h>
 
+#include "configuration.h"
 #include "ringbuffer.h"
 #include "sample.h"
 
@@ -23,10 +24,14 @@ struct pf2_session {
     struct timespec start_time_realtime;
     struct timespec start_time; // When profiling started
     uint64_t duration_ns; // Duration of profiling in nanoseconds
+
+    struct pf2_configuration *configuration;
 };
 
+VALUE rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self);
 VALUE rb_pf2_session_start(VALUE self);
 VALUE rb_pf2_session_stop(VALUE self);
+VALUE rb_pf2_session_configuration(VALUE self);
 VALUE pf2_session_alloc(VALUE self);
 void pf2_session_dmark(void *sess);
 void pf2_session_dfree(void *sess);
