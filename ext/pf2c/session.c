@@ -13,6 +13,7 @@
 #include <backtrace.h>
 
 #include "backtrace_state.h"
+#include "configuration.h"
 #include "sample.h"
 #include "session.h"
 #include "serializer.h"
@@ -20,6 +21,27 @@
 static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 bool ensure_sample_capacity(struct pf2_session *session);
+
+VALUE
+rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self)
+{
+    struct pf2_session *session;
+    TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
+
+    // Create configuration from options hash
+    VALUE kwargs = Qnil;
+    rb_scan_args(argc, argv, ":", &kwargs);
+    ID kwarg_labels[] = {
+        rb_intern("interval_ms"),
+        rb_intern("time_mode")
+    };
+    VALUE *kwarg_values = NULL;
+    rb_get_kwargs(kwargs, kwarg_labels, 0, 2, kwarg_values);
+
+    session->configuration = pf2_configuration_new_from_options_hash(kwargs);
+
+    return self;
+}
 
 VALUE
 rb_pf2_session_start(VALUE self)
@@ -53,17 +75,23 @@ rb_pf2_session_start(VALUE self)
     sev.sigev_notify = SIGEV_SIGNAL;
     sev.sigev_signo = SIGPROF;
     sev.sigev_value.sival_ptr = session; // Passed as info->si_value.sival_ptr
-    if (timer_create(CLOCK_PROCESS_CPUTIME_ID, &sev, &session->timer) == -1) {
+    if (timer_create(
+        session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
+            ? CLOCK_PROCESS_CPUTIME_ID
+            : CLOCK_MONOTONIC,
+        &sev,
+        &session->timer
+    ) == -1) {
         rb_raise(rb_eRuntimeError, "Failed to create timer");
     }
     struct itimerspec its = {
         .it_value = {
             .tv_sec = 0,
-            .tv_nsec = 10 * 1000000, // 10 ms
+            .tv_nsec = session->configuration->interval_ms * 1000000,
         },
         .it_interval = {
             .tv_sec = 0,
-            .tv_nsec = 10 * 1000000, // 10 ms
+            .tv_nsec = session->configuration->interval_ms * 1000000,
         },
     };
     if (timer_settime(session->timer, 0, &its, NULL) == -1) {
@@ -210,6 +238,14 @@ rb_pf2_session_stop(VALUE self)
 }
 
 VALUE
+rb_pf2_session_configuration(VALUE self)
+{
+    struct pf2_session *session;
+    TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
+    return pf2_configuration_to_ruby_hash(session->configuration);
+}
+
+VALUE
 pf2_session_alloc(VALUE self)
 {
     // Initialize state for libbacktrace
@@ -244,6 +280,8 @@ pf2_session_alloc(VALUE self)
     if (session->samples == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
+
+    session->configuration = NULL;
 
     return TypedData_Wrap_Struct(self, &pf2_session_type, session);
 }
@@ -287,6 +325,7 @@ pf2_session_dfree(void *sess)
 {
     // TODO: Ensure the uninstall process is complete before freeing the session
     struct pf2_session *session = sess;
+    pf2_configuration_free(session->configuration);
     pf2_ringbuffer_free(session->rbuf);
     free(session->samples);
     free(session->collector_thread);
