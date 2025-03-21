@@ -11,6 +11,7 @@ if !have_func('backtrace_full', 'backtrace.h')
   raise 'libbacktrace has not been properly configured'
 end
 
+append_ldflags('-lrt') # for timer_create
 append_cflags('-fvisibility=hidden')
 append_cflags('-DPF2_DEBUG') # TODO: make this conditional
 
