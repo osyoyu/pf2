@@ -61,6 +61,12 @@ Profiles can be visualized using the [Firefox Profiler](https://profiler.firefox
 $ pf2 report -o report.json my_program.pf2profile
 ```
 
+Alternatively, `pf2 annotate` can be used to display hit counts side-by-side with source code.
+
+```console
+$ pf2 annotate my_program.pf2prof
+```
+
 ### Configuration
 
 Pf2 accepts the following configuration keys:
