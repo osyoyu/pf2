@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## Added
+
+- `pf2 annotate` command
+- A new sample collection backend implemented in C
+
 ## [0.8.0] - 2025-01-27
 
 ## Added
