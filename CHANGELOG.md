@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.9.0] - 2025-03-22
+
 ## Added
 
 - `pf2 annotate` command
