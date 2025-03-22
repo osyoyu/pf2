@@ -5,6 +5,10 @@
 - `pf2 annotate` command
 - A new sample collection backend implemented in C
 
+## Changed
+
+- Set SA_RESTART flag to reduce EINTRs in profiled code
+
 ## [0.8.0] - 2025-01-27
 
 ## Added
