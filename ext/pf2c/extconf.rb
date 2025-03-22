@@ -13,7 +13,7 @@ end
 
 append_ldflags('-lrt') # for timer_create
 append_cflags('-fvisibility=hidden')
-append_cflags('-DPF2_DEBUG') # TODO: make this conditional
+append_cflags('-DPF2_DEBUG') if ENV['PF2_DEBUG'] == '1'
 
 if have_func('timer_create')
   $srcs = Dir.glob("#{File.join(File.dirname(__FILE__), '*.c')}")

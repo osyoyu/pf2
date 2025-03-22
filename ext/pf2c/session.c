@@ -14,6 +14,7 @@
 
 #include "backtrace_state.h"
 #include "configuration.h"
+#include "debug.h"
 #include "sample.h"
 #include "session.h"
 #include "serializer.h"
@@ -113,9 +114,7 @@ sample_collector_thread(void *arg)
             // Ensure we have capacity before adding a new sample
             if (!ensure_sample_capacity(session)) {
                 // Failed to expand buffer
-#ifdef PF2_DEBUG
-                printf("Failed to expand sample buffer. Dropping sample\n");
-#endif
+                PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
                 break;
             }
 
@@ -144,27 +143,21 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
-#ifdef PF2_DEBUG
-        printf("Dropping sample: Garbage collection is in progress\n");
-#endif
+        PF2_DEBUG_LOG("Dropping sample: Garbage collection is in progress\n");
         return;
     }
 
     struct pf2_sample sample = { 0 };
 
     if (pf2_sample_capture(&sample) == false) {
-#ifdef PF2_DEBUG
-        printf("Dropping sample: Failed to capture sample\n");
-#endif
+        PF2_DEBUG_LOG("Dropping sample: Failed to capture sample\n");
         return;
     }
 
     // Copy the sample to the ringbuffer
     if (pf2_ringbuffer_push(session->rbuf, &sample) == false) {
         // Copy failed. The sample buffer is full.
-#ifdef PF2_DEBUG
-        printf("Dropping sample: Sample buffer is full\n");
-#endif
+        PF2_DEBUG_LOG("Dropping sample: Sample buffer is full\n");
         return;
     }
 
@@ -177,7 +170,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
         (sig_end_time.tv_sec - sig_start_time.tv_sec) * 1000000000L +
         (sig_end_time.tv_nsec - sig_start_time.tv_nsec);
 
-    printf("sigprof_handler: consumed_time_ns: %lu\n", sample.consumed_time_ns);
+    PF2_DEBUG_LOG("sigprof_handler: consumed_time_ns: %lu\n", sample.consumed_time_ns);
 #endif
 }
 
