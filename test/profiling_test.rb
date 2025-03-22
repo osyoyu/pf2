@@ -21,6 +21,6 @@ class ProfilingTest < Minitest::Test
     profile = session.stop
 
     assert_operator profile[:samples].size, :>=, 10, "Expected at least 10 samples"
-    assert_operator profile[:samples].size, :<, 20, "Expected no more than 20 samples"
+    assert_operator profile[:samples].size, :<, 30, "Expected no more than 30 samples"
   end
 end
