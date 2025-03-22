@@ -138,7 +138,7 @@ Future Plans
 Development
 --------
 
-See [docs/development.md](docs/development.md).
+See [doc/development.md](doc/development.md).
 
 
 License
