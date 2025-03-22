@@ -147,7 +147,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
         return;
     }
 
-    struct pf2_sample sample = { 0 };
+    struct pf2_sample sample;
 
     if (pf2_sample_capture(&sample) == false) {
         PF2_DEBUG_LOG("Dropping sample: Failed to capture sample\n");

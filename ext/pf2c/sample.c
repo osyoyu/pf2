@@ -1,5 +1,6 @@
 #include <stdbool.h>
 #include <time.h>
+#include <pthread.h>
 
 #include <backtrace.h>
 #include <ruby.h>
@@ -17,10 +18,15 @@ static int backtrace_on_ok(void *data, uintptr_t pc);
 bool
 pf2_sample_capture(struct pf2_sample *sample)
 {
+    // Initialize sample
+    memset(sample, 0, sizeof(struct pf2_sample));
+
     // Record the current time
     struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
     sample->timestamp_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+
+    sample->context_pthread = pthread_self();
 
     // Obtain the current stack from Ruby
     sample->depth = rb_profile_frames(0, 200, sample->cmes, sample->linenos);

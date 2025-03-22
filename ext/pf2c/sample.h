@@ -1,11 +1,15 @@
 #ifndef PF2_SAMPLE_H
 #define PF2_SAMPLE_H
 
+#include <pthread.h>
+
 #include <ruby.h>
 
 extern const int PF2_SAMPLE_MAX_NATIVE_DEPTH;
 
 struct pf2_sample {
+    pthread_t context_pthread;
+
     int depth;
     VALUE cmes[200];
     int linenos[200];

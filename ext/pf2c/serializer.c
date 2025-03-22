@@ -83,7 +83,7 @@ pf2_ser_prepare(struct pf2_ser *serializer, struct pf2_session *session) {
         ensure_samples_capacity(serializer);
 
         struct pf2_ser_sample *ser_sample = &serializer->samples[serializer->samples_count++];
-        ser_sample->ruby_thread_id = 0; // TODO: Add thread ID support
+        ser_sample->ruby_thread_id = sample->context_pthread;
         ser_sample->elapsed_ns = sample->timestamp_ns - serializer->start_timestamp_ns;
 
         // Copy and process Ruby stack frames
