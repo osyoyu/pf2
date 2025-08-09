@@ -1,6 +1,12 @@
 Pf2 Development
 ===========
 
+Setup
+--------
+
+- `git submodule update --init`
+
+
 Releasing
 --------
 
