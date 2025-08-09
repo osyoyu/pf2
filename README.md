@@ -116,7 +116,7 @@ Schedulers determine when to execute sample collection, based on configuration (
 
 The first is the `SignalScheduler`, based on POSIX timers. Pf2 will use this scheduler when possible. SignalScheduler creates a POSIX timer for each Ruby Thread (the underlying pthread to be more accurate) using `timer_create(2)`. This leaves the actual time-keeping to the OS, which is capable of tracking accurate per-thread CPU time usage.
 
-When the specified interval has arrived (the timer has _expired_), the OS delivers us a SIGALRM (note: Unlike `setitimer(2)`, `timer_create(2)` allows us to choose which signal to be delivered, and Pf2 uses SIGALRM regardless of time mode). This is why the scheduler is named SignalScheduler.
+When the specified interval has arrived (the timer has _expired_), the OS delivers us a SIGPROF signal. This is why the scheduler is named SignalScheduler.
 
 Signals are directed to Ruby Threads' underlying pthread, effectively "pausing" the Thread's activity. This routing is done using `SIGEV_THREAD_ID`, which is a Linux-only feature. Sample collection is done in the signal handler, which is expected to be more _accurate_, capturing the paused Thread's activity.
 
@@ -127,6 +127,11 @@ This scheduler heavily relies on Ruby's 1:N Thread model (1 Ruby Threads is stro
 Another scheduler is the `TimerThreadScheduler`, which maintains a time-keeping thread by itself. A new native thread (pthread on Linux/macOS) will be created, and an infinite loop will be run inside. After `sleep(2)`-ing for the specified interval time, sampling will be queued using Ruby's Postponed Job API.
 
 This scheduler is wall-time only, and does not support CPU-time based profiling.
+
+#### macOS Support
+
+On platforms where `timer_create()` is not supported (namely macOS), Pf2 falls back to `setitimer()`.
+
 
 Future Plans
 --------

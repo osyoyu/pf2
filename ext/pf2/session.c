@@ -1,11 +1,12 @@
 #include <bits/time.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
+#include <sys/time.h>
 #include <time.h>
-#include <pthread.h>
 
 #include <ruby.h>
 #include <ruby/debug.h>
@@ -18,6 +19,11 @@
 #include "sample.h"
 #include "session.h"
 #include "serializer.h"
+
+#ifndef HAVE_TIMER_CREATE
+// Global session pointer for setitimer fallback
+static struct pf2_session *global_current_session = NULL;
+#endif
 
 static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
@@ -61,17 +67,28 @@ rb_pf2_session_start(VALUE self)
         rb_raise(rb_eRuntimeError, "Failed to spawn sample collector thread");
     }
 
-    // Configure signal handler
+    // Install signal handler for SIGPROF
     struct sigaction sa;
     sa.sa_sigaction = sigprof_handler;
     sigemptyset(&sa.sa_mask);
     sigaddset(&sa.sa_mask, SIGPROF); // Mask SIGPROFs when handler is running
     sa.sa_flags = SA_SIGINFO | SA_RESTART;
     if (sigaction(SIGPROF, &sa, NULL) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to install signal handler");
+        rb_raise(rb_eRuntimeError, "Failed to install SIGPROF handler");
     }
 
-    // Configure a timer to send SIGPROF every 10 ms of CPU time
+#ifndef HAVE_TIMER_CREATE
+    // Install signal handler for SIGALRM if using wall time mode with setitimer
+    if (session->configuration->time_mode != PF2_TIME_MODE_CPU_TIME) {
+        sigaddset(&sa.sa_mask, SIGALRM);
+        if (sigaction(SIGALRM, &sa, NULL) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to install SIGALRM handler");
+        }
+    }
+#endif
+
+#ifdef HAVE_TIMER_CREATE
+    // Configure a kernel timer to send SIGPROF periodically
     struct sigevent sev;
     sev.sigev_notify = SIGEV_SIGNAL;
     sev.sigev_signo = SIGPROF;
@@ -98,6 +115,30 @@ rb_pf2_session_start(VALUE self)
     if (timer_settime(session->timer, 0, &its, NULL) == -1) {
         rb_raise(rb_eRuntimeError, "Failed to start timer");
     }
+#else
+    // Use setitimer as fallback
+    // Some platforms (e.g. macOS) do not have timer_create(3).
+    // setitimer(3) can be used as a alternative, but has limited functionality.
+    global_current_session = session;
+
+    struct itimerval itv = {
+        .it_value = {
+            .tv_sec = 0,
+            .tv_usec = session->configuration->interval_ms * 1000,
+        },
+        .it_interval = {
+            .tv_sec = 0,
+            .tv_usec = session->configuration->interval_ms * 1000,
+        },
+    };
+    int which_timer = session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
+        ? ITIMER_PROF  // CPU time (sends SIGPROF)
+        : ITIMER_REAL; // Wall time (sends SIGALRM)
+
+    if (setitimer(which_timer, &itv, NULL) == -1) {
+        rb_raise(rb_eRuntimeError, "Failed to start timer");
+    }
+#endif
 
     return Qtrue;
 }
@@ -139,7 +180,12 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     clock_gettime(CLOCK_MONOTONIC, &sig_start_time);
 #endif
 
-    struct pf2_session *session = info->si_value.sival_ptr;
+    struct pf2_session *session;
+#ifdef HAVE_TIMER_CREATE
+    session = info->si_value.sival_ptr;
+#else
+    session = global_current_session;
+#endif
 
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
@@ -213,9 +259,20 @@ rb_pf2_session_stop(VALUE self)
     session->duration_ns = end_ns - start_ns;
 
     // Disarm and delete the timer.
+#ifdef HAVE_TIMER_CREATE
     if (timer_delete(session->timer) == -1) {
         rb_raise(rb_eRuntimeError, "Failed to delete timer");
     }
+#else
+    struct itimerval zero_timer = {{0, 0}, {0, 0}};
+    int which_timer = session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
+        ? ITIMER_PROF
+        : ITIMER_REAL;
+    if (setitimer(which_timer, &zero_timer, NULL) == -1) {
+        rb_raise(rb_eRuntimeError, "Failed to stop timer");
+    }
+    global_current_session = NULL;
+#endif
 
     // Terminate the collector thread
     session->is_running = false;
