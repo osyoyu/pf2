@@ -133,11 +133,11 @@ This scheduler is wall-time only, and does not support CPU-time based profiling.
 On platforms where `timer_create()` is not supported (namely macOS), Pf2 falls back to `setitimer()`.
 
 
-Future Plans
+Wishlist
 --------
 
-- Remove known limitations, if possible
-- Implement a "tracing" scheduler, using the C TracePoint API
+- [Flame Scopes](https://www.brendangregg.com/flamescope.html)
+- More unit/e2e tests
 - more
 
 Development
