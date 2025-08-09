@@ -33,7 +33,6 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'rake-compiler'
   spec.add_dependency 'mini_portile2'
-  spec.add_dependency 'rb_sys', '0.9.105'
   spec.add_dependency 'webrick'
 
   spec.add_development_dependency 'irb'

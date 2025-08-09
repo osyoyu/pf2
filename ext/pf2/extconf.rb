@@ -1,10 +1,21 @@
 require 'mkmf'
-require 'rb_sys/mkmf'
+require 'mini_portile2'
 
-abort 'missing rb_profile_thread_frames()' unless have_func 'rb_profile_thread_frames'
+libbacktrace = MiniPortile.new('libbacktrace', '1.0.0')
+libbacktrace.source_directory = File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'vendor', 'libbacktrace'))
+libbacktrace.configure_options << 'CFLAGS=-fPIC'
+libbacktrace.cook
+libbacktrace.mkmf_config
 
-create_rust_makefile 'pf2/pf2' do |r|
-  if ENV['PF2_FEATURES']
-    r.features = ENV['PF2_FEATURES'].split(",")
-  end
+if !have_func('backtrace_full', 'backtrace.h')
+  raise 'libbacktrace has not been properly configured'
+end
+
+append_ldflags('-lrt') # for timer_create
+append_cflags('-fvisibility=hidden')
+append_cflags('-DPF2_DEBUG') if ENV['PF2_DEBUG'] == '1'
+
+if have_func('timer_create')
+  $srcs = Dir.glob("#{File.join(File.dirname(__FILE__), '*.c')}")
+  create_makefile 'pf2/pf2'
 end

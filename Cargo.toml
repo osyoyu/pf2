@@ -1,3 +1,0 @@
-[workspace]
-members = ["./ext/pf2", "./crates/backtrace-sys2"]
-resolver = "2"
