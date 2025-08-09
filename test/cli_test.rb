@@ -8,7 +8,8 @@ class CLITest < Minitest::Test
   def test_pf2_report_creates_output_file
     Tempfile.create("input.pf2") do |input_file|
       # Create an empty profile file
-      input_file.write('{"threads": {}}')
+      empty_profile = { start_timestamp_ns: 0, duration_ns: 0, samples: [], locations: [], functions: [] }
+      input_file.write(Marshal.dump(empty_profile))
       input_file.flush
 
       output_path = nil
