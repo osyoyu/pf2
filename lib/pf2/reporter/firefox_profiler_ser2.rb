@@ -2,6 +2,8 @@
 
 require 'json'
 
+require_relative 'stack_weaver'
+
 module Pf2
   module Reporter
     # Generates Firefox Profiler's "processed profile format"
@@ -72,6 +74,7 @@ module Pf2
           @stack_tree = { :stack_id => nil }
           @reverse_stack_tree = []
           @string_table = { nil => 0 }
+          @stack_weaver = StackWeaver.new(@profile)
         end
 
         def inspect
@@ -79,9 +82,6 @@ module Pf2
         end
 
         def emit
-          # TODO: weave?
-          # @thread[:stack_tree] = x
-
           # Build func table from profile[:functions]
           func_table = build_func_table
           # Build frame table from profile[:locations]
@@ -136,8 +136,10 @@ module Pf2
           }
 
           @samples.each do |sample|
-            stack = sample[:stack].reverse
-            stack_id = @stack_tree.dig(*stack, :stack_id)
+            # Weave Ruby stack and native stack
+            woven_stack = @stack_weaver.weave(sample[:stack], sample[:native_stack] || [])
+            woven_stack.reverse! # StackWeaver returns in root->leaf order, we need leaf->root
+            stack_id = @stack_tree.dig(*woven_stack, :stack_id)
 
             ret[:stack] << stack_id
             ret[:time] << sample[:elapsed_ns] / 1_000_000 # ns -> ms
@@ -165,9 +167,11 @@ module Pf2
           }
 
           @profile[:locations].each.with_index do |location, i|
+            function = @profile[:functions][location[:function_index]]
+
             ret[:address] << location[:address]
-            ret[:category] << 1
-            ret[:subcategory] << 1
+            ret[:category] << (function[:implementation] == :native ? 3 : 2)
+            ret[:subcategory] << nil
             ret[:func] << location[:function_index]
             ret[:inner_window_id] << nil
             ret[:implementation] << nil
@@ -218,15 +222,15 @@ module Pf2
           }
 
           @profile[:samples].each do |sample|
-            # Stack (Array of location indices) recorded in sample, reversed
-            # example: [1, 2, 9] (1 is the root)
-            stack = sample[:stack].reverse
+            # Weave Ruby stack and native stack
+            woven_stack = @stack_weaver.weave(sample[:stack], sample[:native_stack] || [])
+            woven_stack.reverse! # StackWeaver returns in root->leaf order, we need leaf->root
 
             # Build the stack_table Array which Firefox Profiler requires.
             # At the same time, build the stack tree for efficient traversal.
 
             current_node = @stack_tree # the stack tree root
-            stack.each do |location_index|
+            woven_stack.each do |location_index|
               if current_node[location_index].nil?
                 # The tree node is unknown. Create it.
                 new_stack_id = ret[:frame].length # The position of the new stack in the stack_table array
@@ -238,7 +242,7 @@ module Pf2
 
                 # Register the stack in the stack_table Array
                 ret[:frame] << location_index
-                ret[:category] << (function[:implementation] == :ruby ? 2 : 1)
+                ret[:category] << (function[:implementation] == :native ? 3 : 2)
                 ret[:subcategory] << nil
                 ret[:prefix] << current_node[:stack_id] # the parent's position in the stack_table array
               end
