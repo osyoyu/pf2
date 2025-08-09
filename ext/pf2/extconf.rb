@@ -15,7 +15,13 @@ append_ldflags('-lrt') # for timer_create
 append_cflags('-fvisibility=hidden')
 append_cflags('-DPF2_DEBUG') if ENV['PF2_DEBUG'] == '1'
 
-if have_func('timer_create')
+# Check for timer functions
+have_timer_create = have_func('timer_create')
+have_setitimer = have_func('setitimer')
+
+if have_timer_create || have_setitimer
   $srcs = Dir.glob("#{File.join(File.dirname(__FILE__), '*.c')}")
   create_makefile 'pf2/pf2'
+else
+  raise 'Neither timer_create nor setitimer is available'
 end

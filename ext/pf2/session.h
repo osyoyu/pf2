@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 #include <stdatomic.h>
+#include <sys/time.h>
 
 #include <ruby.h>
 
@@ -12,7 +13,11 @@
 
 struct pf2_session {
     bool is_running;
+#ifdef HAVE_TIMER_CREATE
     timer_t timer;
+#else
+    struct itimerval timer;
+#endif
     struct pf2_ringbuffer *rbuf;
     atomic_bool is_marking; // Whether garbage collection is in progress
     pthread_t *collector_thread;
