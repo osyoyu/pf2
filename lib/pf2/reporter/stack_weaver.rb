@@ -2,6 +2,14 @@
 
 module Pf2
   module Reporter
+    # "Weaves" the native stack into the Ruby stack.
+    #
+    # Strategy:
+    # - Split the stack into Ruby and Native parts
+    # - Start from the root of the Native stack
+    # - Dig in to the native stack until we hit a rb_vm_exec(), which marks a call into Ruby code
+    # - Switch to Ruby stack. Keep digging until we hit a Cfunc call, then switch back to Native stack
+    # - Repeat until we consume the entire stack
     class StackWeaver
       def initialize(profile)
         @profile = profile
