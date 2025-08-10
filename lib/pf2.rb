@@ -8,7 +8,7 @@ module Pf2
   class Error < StandardError; end
 
   def self.start(...)
-    @@session = Pf2::Session.new(...)
+    @@session = Pf2c::Session.new(...)
     @@session.start
   end
 
