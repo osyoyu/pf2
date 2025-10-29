@@ -2,6 +2,7 @@ PATH
   remote: .
   specs:
     pf2 (1.0.0.alpha1)
+      logger
       mini_portile2
       rake-compiler
       webrick
@@ -16,6 +17,7 @@ GEM
       pp (>= 0.6.0)
       rdoc (>= 4.0.0)
       reline (>= 0.4.2)
+    logger (1.7.0)
     mini_portile2 (2.8.8)
     minitest (5.25.5)
     pp (0.6.2)
