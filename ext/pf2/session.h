@@ -50,7 +50,7 @@ static const rb_data_type_t pf2_session_type = {
         .dsize = pf2_session_dsize,
     },
     .data = NULL,
-    .flags = RUBY_TYPED_FREE_IMMEDIATELY,
+    .flags = 0,
 };
 
 #endif // PF2_SESSION_H
