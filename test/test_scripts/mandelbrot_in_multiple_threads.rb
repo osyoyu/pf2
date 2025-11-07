@@ -17,6 +17,6 @@ end
 ths = 2.times.map do
   Thread.new { takeuchi(14, 10, 1) }
 end
-Pf2.start(threads: ths)
+Pf2.start
 ths.each { |th| th.join }
 Pf2.stop
