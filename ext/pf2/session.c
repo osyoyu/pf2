@@ -28,6 +28,7 @@ static struct pf2_session *global_current_session = NULL;
 static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 bool ensure_sample_capacity(struct pf2_session *session);
+static void pf2_session_stop(struct pf2_session *session);
 
 VALUE
 rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self)
@@ -251,6 +252,20 @@ rb_pf2_session_stop(VALUE self)
     struct pf2_session *session;
     TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
 
+    pf2_session_stop(session);
+
+    // Create serializer and serialize
+    struct pf2_ser *serializer = pf2_ser_new();
+    pf2_ser_prepare(serializer, session);
+    VALUE result = pf2_ser_to_ruby_hash(serializer);
+    pf2_ser_free(serializer);
+
+    return result;
+}
+
+static void
+pf2_session_stop(struct pf2_session *session)
+{
     // Calculate duration
     struct timespec end_time;
     clock_gettime(CLOCK_MONOTONIC, &end_time);
@@ -277,14 +292,6 @@ rb_pf2_session_stop(VALUE self)
     // Terminate the collector thread
     session->is_running = false;
     pthread_join(*session->collector_thread, NULL);
-
-    // Create serializer and serialize
-    struct pf2_ser *serializer = pf2_ser_new();
-    pf2_ser_prepare(serializer, session);
-    VALUE result = pf2_ser_to_ruby_hash(serializer);
-    pf2_ser_free(serializer);
-
-    return result;
 }
 
 VALUE
@@ -373,8 +380,13 @@ pf2_session_dmark(void *sess)
 void
 pf2_session_dfree(void *sess)
 {
-    // TODO: Ensure the uninstall process is complete before freeing the session
     struct pf2_session *session = sess;
+
+    // Stop the session if it's still running
+    if (session->is_running) {
+        pf2_session_stop(session);
+    }
+
     pf2_configuration_free(session->configuration);
     pf2_ringbuffer_free(session->rbuf);
     free(session->samples);
