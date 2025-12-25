@@ -51,4 +51,4 @@ DEPENDENCIES
   rake (~> 13.3)
 
 BUNDLED WITH
-   2.4.19
+   4.0.3
