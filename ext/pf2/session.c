@@ -382,6 +382,8 @@ pf2_session_dfree(void *sess)
 {
     struct pf2_session *session = sess;
 
+    assert(session->is_running == false || session->is_running == true);
+
     // Stop the session if it's still running
     if (session->is_running) {
         pf2_session_stop(session);
