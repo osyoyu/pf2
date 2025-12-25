@@ -1,17 +1,17 @@
-## [Unreleased]
+## [0.10.0] - 2025-12-26
 
 ## Added
 
-**This version contains a major rewrite of the profiler!**
+**This version contains a complete rewrite of the profiler!**
 
 - The default sample collection backend has been switched to the new C-based backend.
   - The previous Rust-based backed has been removed. Use v0.9.0 if you need it.
-- New features:
-  - On platforms which lack `timer_create(3)` such as macOS, Pf2 fall backs to `setitimer(3)` based sampling.
+- macOS / non-Linux platform support!
+  - On platforms which lack `timer_create(3)` such as macOS, Pf2 now fall backs to `setitimer(3)` based sampling. This mode does not support per-thread CPU time sampling.
 
 ### Changed
 
-- `logger` is now declared as a dependency (Ruby 3.5 compat).
+- `logger` is now declared as a dependency (Ruby 4.0 compat).
 
 
 ## [0.9.0] - 2025-03-22

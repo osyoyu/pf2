@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    pf2 (1.0.0.alpha1)
+    pf2 (0.10.0)
       logger
       mini_portile2
       rake-compiler
@@ -51,4 +51,4 @@ DEPENDENCIES
   rake (~> 13.3)
 
 BUNDLED WITH
-   4.0.3
+  4.0.3
