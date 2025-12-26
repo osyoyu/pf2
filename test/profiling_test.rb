@@ -13,9 +13,7 @@ end
 
 class ProfilingTest < Minitest::Test
   def test_profiling_loop_addition
-    return if !defined?(Pf2c)
-
-    session = Pf2c::Session.new
+    session = Pf2::Session.new
     session.start
     loop_addition
     profile = session.stop
@@ -25,9 +23,7 @@ class ProfilingTest < Minitest::Test
   end
 
   def test_capture_thread_id
-    return if !defined?(Pf2c)
-
-    session = Pf2c::Session.new
+    session = Pf2::Session.new
     session.start
     loop_addition
     profile = session.stop
@@ -36,9 +32,7 @@ class ProfilingTest < Minitest::Test
   end
 
   def test_multiple_threads
-    return if !defined?(Pf2c)
-
-    session = Pf2c::Session.new
+    session = Pf2::Session.new
     session.start
     th1 = Thread.new { loop_addition }
     th2 = Thread.new { loop_addition }
