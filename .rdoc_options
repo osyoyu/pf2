@@ -11,3 +11,6 @@ exclude:
   - test
   - tmp
   - vendor
+
+autolink_excluded_words:
+  - Pf2
