@@ -1,5 +1,6 @@
 title: Pf2
 main_page: README.md
+encoding: UTF-8
 
 include:
   - lib
