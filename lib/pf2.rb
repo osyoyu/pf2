@@ -1,14 +1,13 @@
 # frozen_string_literal: true
 
 require_relative 'pf2/pf2'
-require_relative 'pf2/session'
 require_relative 'pf2/version'
 
 module Pf2
   class Error < StandardError; end
 
   def self.start(...)
-    @@session = Pf2c::Session.new(...)
+    @@session = Session.new(...)
     @@session.start
   end
 

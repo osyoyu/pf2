@@ -43,7 +43,7 @@ void pf2_session_dfree(void *sess);
 size_t pf2_session_dsize(const void *sess);
 
 static const rb_data_type_t pf2_session_type = {
-    .wrap_struct_name = "Pf2c::Session",
+    .wrap_struct_name = "Pf2::Session",
     .function = {
         .dmark = pf2_session_dmark,
         .dfree = pf2_session_dfree,
