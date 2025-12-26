@@ -1,6 +1,7 @@
 require 'bundler/gem_tasks'
 require 'rake/extensiontask'
 require 'minitest/test_task'
+require 'rdoc/task'
 
 task default: %i[]
 
@@ -14,4 +15,8 @@ Minitest::TestTask.create(:test) do |t|
   t.libs << "lib"
   t.warning = false
   t.test_globs = ["test/**/*_test.rb"]
+end
+
+RDoc::Task.new do |doc|
+  doc.rdoc_dir = "_site" # for GitHub pages
 end

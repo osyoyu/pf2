@@ -1,0 +1,12 @@
+title: Pf2
+main_page: README.md
+
+include:
+  - lib
+  - ext
+
+exclude:
+  - pkg
+  - test
+  - tmp
+  - vendor

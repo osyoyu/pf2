@@ -49,6 +49,7 @@ DEPENDENCIES
   minitest
   pf2!
   rake (~> 13.3)
+  rdoc
 
 BUNDLED WITH
   4.0.3
