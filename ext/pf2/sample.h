@@ -6,7 +6,7 @@
 #include <ruby.h>
 
 #define PF2_SAMPLE_MAX_RUBY_DEPTH 200
-#define PF2_SAMPLE_MAX_NATIVE_DEPTH 300
+#define PF2_SAMPLE_MAX_NATIVE_DEPTH 1000
 
 struct pf2_sample {
     pthread_t context_pthread;
