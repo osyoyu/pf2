@@ -9,8 +9,6 @@
 #include "backtrace_state.h"
 #include "sample.h"
 
-const int PF2_SAMPLE_MAX_NATIVE_DEPTH = 300;
-
 static int capture_native_backtrace(struct pf2_sample *sample);
 static int backtrace_on_ok(void *data, uintptr_t pc);
 
@@ -29,7 +27,7 @@ pf2_sample_capture(struct pf2_sample *sample)
     sample->context_pthread = pthread_self();
 
     // Obtain the current stack from Ruby
-    sample->depth = rb_profile_frames(0, 200, sample->cmes, sample->linenos);
+    sample->depth = rb_profile_frames(0, PF2_SAMPLE_MAX_RUBY_DEPTH, sample->cmes, sample->linenos);
 
     // Capture C-level backtrace
     sample->native_stack_depth = capture_native_backtrace(sample);

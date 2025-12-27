@@ -5,17 +5,18 @@
 
 #include <ruby.h>
 
-extern const int PF2_SAMPLE_MAX_NATIVE_DEPTH;
+#define PF2_SAMPLE_MAX_RUBY_DEPTH 200
+#define PF2_SAMPLE_MAX_NATIVE_DEPTH 300
 
 struct pf2_sample {
     pthread_t context_pthread;
 
     int depth;
-    VALUE cmes[200];
-    int linenos[200];
+    VALUE cmes[PF2_SAMPLE_MAX_RUBY_DEPTH];
+    int linenos[PF2_SAMPLE_MAX_RUBY_DEPTH];
 
     size_t native_stack_depth;
-    uintptr_t native_stack[200];
+    uintptr_t native_stack[PF2_SAMPLE_MAX_NATIVE_DEPTH];
 
     uint64_t consumed_time_ns;
     uint64_t timestamp_ns;
