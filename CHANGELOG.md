@@ -11,7 +11,8 @@
 
 ### Fixed
 
-- Fixed an bug where the program would crash when a `Pf2::Session` is GC'd before profiling starts.
+- Fixed an bug where the program crashes when a `Pf2::Session` is GC'd before profiling starts.
+- Fixed an bug where the program crashes when the native stack was more than 200 frames deep.
 
 
 ## [0.10.0] - 2025-12-26
