@@ -3,6 +3,9 @@ Pf2
 
 A experimental sampling-based profiler for Ruby 3.3+.
 
+- GitHub: https://github.com/osyoyu/pf2
+- Documentation: https://osyoyu.github.io/pf2/
+
 Notable Capabilites
 --------
 
