@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.11.0] - 2025-12-27
+
 ### Added
 
 - RDoc documentation is now online - https://osyoyu.github.io/pf2/
