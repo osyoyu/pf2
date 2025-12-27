@@ -1,6 +1,22 @@
+## [Unreleased]
+
+### Added
+
+- RDoc documentation is now online - https://osyoyu.github.io/pf2/
+- Native stack consolidation now supports LTO-ed binaries (@hanazuki)
+
+### Changed
+
+- `Pf2c` module is now completely removed. `Pf2c::Session` has been merged as `Pf2::Session`.
+
+### Fixed
+
+- Fixed an bug where the program would crash when a `Pf2::Session` is GC'd before profiling starts.
+
+
 ## [0.10.0] - 2025-12-26
 
-## Added
+### Added
 
 **This version contains a complete rewrite of the profiler!**
 
