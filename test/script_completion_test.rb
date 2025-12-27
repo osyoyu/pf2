@@ -16,4 +16,8 @@ class ScriptCompletionTest < Minitest::Test
   def test_mandelbrot_in_multiple_threads_completes
     assert_equal(true, system_with_timeout('bundle exec ruby test/test_scripts/mandelbrot_in_multiple_threads.rb', 15).success?)
   end
+
+  def test_exit_while_profiling_completes
+    assert_equal(true, system_with_timeout('bundle exec ruby test/test_scripts/exit_while_profiling.rb', 3).success?)
+  end
 end
