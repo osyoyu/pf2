@@ -82,7 +82,7 @@ module Pf2
 
         # If the next function is a vm_exec_core() (= VM_EXEC in vm_exec.h),
         # we switch to the Ruby stack.
-        function[:name] == 'vm_exec_core'
+        function[:name]&.match?(/\Avm_exec_core(?:\.lto_priv\.\d+)?\z/)
       end
     end
   end
