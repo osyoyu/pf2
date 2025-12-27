@@ -13,6 +13,25 @@ Notable Capabilites
 Usage
 --------
 
+### Installation
+
+You will need a C compiler to build the native extension.
+
+Add this line to your application's Gemfile:
+
+```ruby
+gem 'pf2'
+
+# When using the main branch, specify submodules: true
+gem 'pf2', git: 'https://github.com/osyoyu/pf2.git', submodules: true
+```
+
+Pf2 can be installed as a standalone CLI tool as well.
+
+```console
+gem install pf2
+```
+
 ### Quickstart
 
 Run your Ruby program through `pf2 serve`.
