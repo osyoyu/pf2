@@ -1,6 +1,8 @@
 #ifndef PF2C_SERIALIZER_H
 #define PF2C_SERIALIZER_H
 
+#include <stdint.h>
+
 #include <ruby.h>
 
 #include "session.h"
@@ -10,7 +12,7 @@ struct pf2_ser_sample {
     size_t stack_count;
     int *native_stack;
     size_t native_stack_count;
-    size_t ruby_thread_id;
+    uintptr_t ruby_thread_id;
     uint64_t elapsed_ns;
 };
 

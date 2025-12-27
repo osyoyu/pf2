@@ -83,7 +83,7 @@ pf2_ser_prepare(struct pf2_ser *serializer, struct pf2_session *session) {
         ensure_samples_capacity(serializer);
 
         struct pf2_ser_sample *ser_sample = &serializer->samples[serializer->samples_count++];
-        ser_sample->ruby_thread_id = sample->context_pthread;
+        ser_sample->ruby_thread_id = (uintptr_t)sample->context_pthread;
         ser_sample->elapsed_ns = sample->timestamp_ns - serializer->start_timestamp_ns;
 
         // Copy and process Ruby stack frames
@@ -137,7 +137,7 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
         // Add Ruby stack
         VALUE stack = rb_ary_new_capa(sample->stack_count);
         for (size_t j = 0; j < sample->stack_count; j++) {
-            rb_ary_push(stack, SIZET2NUM(sample->stack[j]));
+            rb_ary_push(stack, ULL2NUM(sample->stack[j]));
         }
         rb_hash_aset(sample_hash, ID2SYM(rb_intern("stack")), stack);
 
@@ -154,7 +154,7 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
         rb_hash_aset(
             sample_hash,
             ID2SYM(rb_intern("ruby_thread_id")),
-            sample->ruby_thread_id ? SIZET2NUM(sample->ruby_thread_id) : Qnil
+            sample->ruby_thread_id ? ULL2NUM(sample->ruby_thread_id) : Qnil
         );
         rb_hash_aset(sample_hash, ID2SYM(rb_intern("elapsed_ns")), ULL2NUM(sample->elapsed_ns));
 
