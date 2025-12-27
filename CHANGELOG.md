@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Fixed
+
+- Fixed issues preventing builds on macOS.
+
+
 ## [0.11.0] - 2025-12-27
 
 ### Added
