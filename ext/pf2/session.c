@@ -318,19 +318,32 @@ pf2_session_alloc(VALUE self)
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
+    // is_running
+    session->is_running = false;
+
+    // timer
+#ifdef HAVE_TIMER_CREATE
+    session->timer = (timer_t)0;
+#else
+    session->timer = (struct itimerval){0};
+#endif
+
+    // rbuf
     session->rbuf = pf2_ringbuffer_new(1000);
     if (session->rbuf == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
+    // is_marking
     atomic_store_explicit(&session->is_marking, false, memory_order_relaxed);
+
+    // collector_thread
     session->collector_thread = malloc(sizeof(pthread_t));
     if (session->collector_thread == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
-    session->duration_ns = 0;
-
+    // samples, samples_index, samples_capacity
     session->samples_index = 0;
     session->samples_capacity = 500; // 10 seconds worth of samples at 50 Hz
     session->samples = malloc(sizeof(struct pf2_sample) * session->samples_capacity);
@@ -338,6 +351,14 @@ pf2_session_alloc(VALUE self)
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
+    // start_time_realtime, start_time
+    session->start_time_realtime = (struct timespec){0};
+    session->start_time = (struct timespec){0};
+
+    // duration_ns
+    session->duration_ns = 0;
+
+    // configuration
     session->configuration = NULL;
 
     return TypedData_Wrap_Struct(self, &pf2_session_type, session);
