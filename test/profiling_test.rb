@@ -13,13 +13,25 @@ end
 
 class ProfilingTest < Minitest::Test
   def test_profiling_loop_addition
-    session = Pf2::Session.new
+    session = Pf2::Session.new(interval_ms: 1)
     session.start
+    start_time = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID)
     loop_addition
+    end_time = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID)
     profile = session.stop
 
-    assert_operator profile[:samples].size, :>=, 10, "Expected at least 10 samples"
-    assert_operator profile[:samples].size, :<, 30, "Expected no more than 30 samples"
+    elapsed_time = end_time - start_time
+    expected_samples = (elapsed_time * 1000).to_i # 1000 Hz sampling rate
+    acceptable_hi = (expected_samples * 1.2).to_i
+    acceptable_lo =
+      if RUBY_PLATFORM.include?("darwin")
+        (expected_samples * 0.3).to_i # macOS has coarser timer?
+      else
+        (expected_samples * 0.8).to_i
+      end
+
+    assert_operator profile[:samples].size, :>=, acceptable_lo, "Expected at least #{acceptable_lo} samples (runtime: #{sprintf("%.4f", elapsed_time)} s)"
+    assert_operator profile[:samples].size, :<, acceptable_hi, "Expected no more than #{acceptable_hi} samples (runtime: #{sprintf("%.4f", elapsed_time)} s)"
   end
 
   def test_capture_thread_id
