@@ -16,8 +16,8 @@ static struct pf2_ser_function extract_function_from_ruby_frame(VALUE frame);
 static struct pf2_ser_function extract_function_from_native_pc(uintptr_t pc);
 // static int backtrace_pcinfo_callback(void *data, uintptr_t pc, const char *filename, int lineno, const char *function);
 static void pf2_backtrace_syminfo_callback(void *data, uintptr_t pc, const char *symname, uintptr_t symval, uintptr_t symsize);
-static int function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function);
-static int location_index_for(struct pf2_ser *serializer, int function_index, int32_t lineno);
+static size_t function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function);
+static size_t location_index_for(struct pf2_ser *serializer, size_t function_index, int32_t lineno);
 static void ensure_samples_capacity(struct pf2_ser *serializer);
 static void ensure_locations_capacity(struct pf2_ser *serializer);
 static void ensure_functions_capacity(struct pf2_ser *serializer);
@@ -137,7 +137,7 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
         // Add Ruby stack
         VALUE stack = rb_ary_new_capa(sample->stack_count);
         for (size_t j = 0; j < sample->stack_count; j++) {
-            rb_ary_push(stack, ULL2NUM(sample->stack[j]));
+            rb_ary_push(stack, SIZET2NUM(sample->stack[j]));
         }
         rb_hash_aset(sample_hash, ID2SYM(rb_intern("stack")), stack);
 
@@ -145,7 +145,7 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
         VALUE native_stack = rb_ary_new_capa(sample->native_stack_count);
         if (sample->native_stack != NULL) {
             for (size_t j = 0; j < sample->native_stack_count; j++) {
-                rb_ary_push(native_stack, ULL2NUM(sample->native_stack[j]));
+                rb_ary_push(native_stack, SIZET2NUM(sample->native_stack[j]));
             }
         }
         rb_hash_aset(sample_hash, ID2SYM(rb_intern("native_stack")), native_stack);
@@ -304,7 +304,7 @@ pf2_backtrace_syminfo_callback(void *data, uintptr_t pc, const char *symname, ui
 
 // Returns the index of the function in `functions`.
 // Calling this method will modify `serializer->profile` in place.
-static int
+static size_t
 function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function) {
     for (size_t i = 0; i < serializer->functions_count; i++) {
         struct pf2_ser_function *existing = &serializer->functions[i];
@@ -332,8 +332,8 @@ function_index_for(struct pf2_ser *serializer, struct pf2_ser_function *function
 
 // Returns the index of the location in `locations`.
 // Calling this method will modify `self.profile` in place.
-static int
-location_index_for(struct pf2_ser *serializer, int function_index, int32_t lineno) {
+static size_t
+location_index_for(struct pf2_ser *serializer, size_t function_index, int32_t lineno) {
     for (size_t i = 0; i < serializer->locations_count; i++) {
         struct pf2_ser_location *existing = &serializer->locations[i];
         if (existing->function_index == function_index && existing->lineno == lineno) {
