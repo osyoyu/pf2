@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    pf2 (0.11.0)
+    pf2 (0.11.1)
       logger
       mini_portile2
       rake-compiler
