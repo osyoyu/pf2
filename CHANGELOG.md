@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.11.2] - 2025-12-28
+
+0.11.1 was accidentally published without libbacktrace vendored.
+
 ## [0.11.1] - 2025-12-28
 
 ### Fixed
