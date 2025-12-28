@@ -8,16 +8,16 @@
 #include "session.h"
 
 struct pf2_ser_sample {
-    int *stack;
+    size_t *stack; // array of location_indexes
     size_t stack_count;
-    int *native_stack;
+    size_t *native_stack; // array of location_indexes
     size_t native_stack_count;
     uintptr_t ruby_thread_id;
     uint64_t elapsed_ns;
 };
 
 struct pf2_ser_location {
-    int function_index;
+    size_t function_index;
     int32_t lineno;
     size_t address;
 };
