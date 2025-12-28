@@ -15,9 +15,17 @@ module Pf2
     @@session.stop
   end
 
-  def self.profile(&block)
+  # Profiles the given block of code.
+  #
+  # Example:
+  #
+  #     profile = Pf2.profile(interval_ms: 42) do
+  #       your_code_here
+  #     end
+  #
+  def self.profile(**kwargs, &block)
     raise ArgumentError, "block required" unless block_given?
-    start(threads: Thread.list)
+    start(**kwargs)
     yield
     result = stop
     @@session = nil # let GC clean up the session

@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Changed
+
+- Pf2.profile now accepts the same parameters as Pf2.start.
+
+
 ## [0.11.3] - 2025-12-28
 
 This version is for testing the new release process through [Trusted Publishing](https://guides.rubygems.org/trusted-publishing/). All code is identical to 0.11.2.
