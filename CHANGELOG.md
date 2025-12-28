@@ -1,10 +1,13 @@
 ## [Unreleased]
 
+## [0.11.3] - 2025-12-28
+
+This version is for testing the new release process through [Trusted Publishing](https://guides.rubygems.org/trusted-publishing/). All code is identical to 0.11.2.
+
+
 ## [0.11.2] - 2025-12-28
 
-0.11.1 was accidentally published without libbacktrace vendored.
-
-## [0.11.1] - 2025-12-28
+0.11.1 was yanked since it was accidentally published without libbacktrace vendored. Use 0.11.2.
 
 ### Fixed
 
