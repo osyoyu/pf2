@@ -15,10 +15,12 @@ struct pf2_ringbuffer {
     struct pf2_sample *samples;
 };
 
-struct pf2_ringbuffer * pf2_ringbuffer_new(int size);
+struct pf2_ringbuffer * pf2_ringbuffer_new(int size, int max_ruby_depth, int max_native_depth);
 void pf2_ringbuffer_free(struct pf2_ringbuffer *ringbuf);
 // async-signal-safe
-bool pf2_ringbuffer_push(struct pf2_ringbuffer *ringbuf, struct pf2_sample *sample);
+bool pf2_ringbuffer_reserve(struct pf2_ringbuffer *ringbuf, struct pf2_sample **sample, int *next_tail);
+// async-signal-safe
+void pf2_ringbuffer_commit(struct pf2_ringbuffer *ringbuf, int next_tail);
 bool pf2_ringbuffer_pop(struct pf2_ringbuffer *ringbuf, struct pf2_sample *out);
 
 #endif // RINGBUFFER_H

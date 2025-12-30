@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -28,6 +29,7 @@ static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 bool ensure_sample_capacity(struct pf2_session *session);
 static void pf2_session_stop(struct pf2_session *session);
+static bool pf2_sample_deep_copy(struct pf2_sample *dest, const struct pf2_sample *src);
 
 VALUE
 rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self)
@@ -40,12 +42,29 @@ rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self)
     rb_scan_args(argc, argv, ":", &kwargs);
     ID kwarg_labels[] = {
         rb_intern("interval_ms"),
-        rb_intern("time_mode")
+        rb_intern("time_mode"),
+        rb_intern("max_depth"),
+        rb_intern("max_native_depth")
     };
     VALUE *kwarg_values = NULL;
-    rb_get_kwargs(kwargs, kwarg_labels, 0, 2, kwarg_values);
+    rb_get_kwargs(kwargs, kwarg_labels, 0, 4, kwarg_values);
 
     session->configuration = pf2_configuration_new_from_options_hash(kwargs);
+    session->rbuf = pf2_ringbuffer_new(
+        1000,
+        session->configuration->max_ruby_depth,
+        session->configuration->max_native_depth
+    );
+    if (session->rbuf == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
+
+    session->samples_index = 0;
+    session->samples_capacity = 500; // 10 seconds worth of samples at 50 Hz
+    session->samples = malloc(sizeof(struct pf2_sample) * session->samples_capacity);
+    if (session->samples == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
 
     return self;
 }
@@ -159,7 +178,12 @@ sample_collector_thread(void *arg)
                 break;
             }
 
-            session->samples[session->samples_index++] = sample;
+            struct pf2_sample *dest = &session->samples[session->samples_index];
+            if (!pf2_sample_deep_copy(dest, &sample)) {
+                PF2_DEBUG_LOG("Failed to copy sample. Dropping sample\n");
+                break;
+            }
+            session->samples_index++;
         }
 
         // Sleep for 100 ms
@@ -193,19 +217,20 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
         return;
     }
 
-    struct pf2_sample sample;
+    struct pf2_sample *slot = NULL;
+    int next_tail = 0;
+    if (pf2_ringbuffer_reserve(session->rbuf, &slot, &next_tail) == false) {
+        PF2_DEBUG_LOG("Dropping sample: Sample buffer is full\n");
+        return;
+    }
 
-    if (pf2_sample_capture(&sample) == false) {
+    if (pf2_sample_capture(slot, session->configuration) == false) {
         PF2_DEBUG_LOG("Dropping sample: Failed to capture sample\n");
         return;
     }
 
     // Copy the sample to the ringbuffer
-    if (pf2_ringbuffer_push(session->rbuf, &sample) == false) {
-        // Copy failed. The sample buffer is full.
-        PF2_DEBUG_LOG("Dropping sample: Sample buffer is full\n");
-        return;
-    }
+    pf2_ringbuffer_commit(session->rbuf, next_tail);
 
 #ifdef PF2_DEBUG
     struct timespec sig_end_time;
@@ -327,11 +352,8 @@ pf2_session_alloc(VALUE self)
     session->timer = (struct itimerval){0};
 #endif
 
-    // rbuf
-    session->rbuf = pf2_ringbuffer_new(1000);
-    if (session->rbuf == NULL) {
-        rb_raise(rb_eNoMemError, "Failed to allocate memory");
-    }
+    // rbuf (will be allocated in #initialize)
+    session->rbuf = NULL;
 
     // is_marking
     atomic_store_explicit(&session->is_marking, false, memory_order_relaxed);
@@ -344,11 +366,8 @@ pf2_session_alloc(VALUE self)
 
     // samples, samples_index, samples_capacity
     session->samples_index = 0;
-    session->samples_capacity = 500; // 10 seconds worth of samples at 50 Hz
-    session->samples = malloc(sizeof(struct pf2_sample) * session->samples_capacity);
-    if (session->samples == NULL) {
-        rb_raise(rb_eNoMemError, "Failed to allocate memory");
-    }
+    session->samples_capacity = 0;
+    session->samples = NULL;
 
     // start_time_realtime, start_time
     session->start_time_realtime = (struct timespec){0};
@@ -374,22 +393,28 @@ pf2_session_dmark(void *sess)
     // Iterate over all samples in the ringbuffer and mark them
     struct pf2_ringbuffer *rbuf = session->rbuf;
     struct pf2_sample *sample;
-    int head = atomic_load_explicit(&rbuf->head, memory_order_acquire);
-    int tail = atomic_load_explicit(&rbuf->tail, memory_order_acquire);
-    while (head != tail) {
-        sample = &rbuf->samples[head];
-        // TODO: Move this to mark function in pf2_sample
-        for (int i = 0; i < sample->depth; i++) {
-            rb_gc_mark(sample->cmes[i]);
+    if (rbuf != NULL) {
+        int head = atomic_load_explicit(&rbuf->head, memory_order_acquire);
+        int tail = atomic_load_explicit(&rbuf->tail, memory_order_acquire);
+        while (head != tail) {
+            sample = &rbuf->samples[head];
+            // TODO: Move this to mark function in pf2_sample
+            if (sample->cmes != NULL) {
+                for (int i = 0; i < sample->depth; i++) {
+                    rb_gc_mark(sample->cmes[i]);
+                }
+            }
+            head = (head + 1) % rbuf->size;
         }
-        head = (head + 1) % rbuf->size;
     }
 
     // Iterate over all samples in the samples array and mark them
     for (size_t i = 0; i < session->samples_index; i++) {
         sample = &session->samples[i];
-        for (int i = 0; i < sample->depth; i++) {
-            rb_gc_mark(sample->cmes[i]);
+        if (sample->cmes != NULL) {
+            for (int i = 0; i < sample->depth; i++) {
+                rb_gc_mark(sample->cmes[i]);
+            }
         }
     }
 
@@ -409,8 +434,15 @@ pf2_session_dfree(void *sess)
         pf2_session_stop(session);
     }
 
-    pf2_configuration_free(session->configuration);
-    pf2_ringbuffer_free(session->rbuf);
+    if (session->configuration != NULL) {
+        pf2_configuration_free(session->configuration);
+    }
+    if (session->rbuf != NULL) {
+        pf2_ringbuffer_free(session->rbuf);
+    }
+    for (size_t i = 0; i < session->samples_index; i++) {
+        pf2_sample_free(&session->samples[i]);
+    }
     free(session->samples);
     free(session->collector_thread);
     free(session);
@@ -420,9 +452,70 @@ size_t
 pf2_session_dsize(const void *sess)
 {
     const struct pf2_session *session = sess;
-    return (
+    size_t size = (
         sizeof(struct pf2_session)
         + sizeof(struct pf2_sample) * session->samples_capacity
-        + sizeof(struct pf2_sample) * session->rbuf->size
+        + (session->rbuf == NULL ? 0 : sizeof(struct pf2_sample) * session->rbuf->size)
     );
+
+    if (session->rbuf != NULL) {
+        size += (size_t)session->rbuf->size * (
+            sizeof(VALUE) * session->configuration->max_ruby_depth
+            + sizeof(int) * session->configuration->max_ruby_depth
+            + sizeof(uintptr_t) * session->configuration->max_native_depth
+        );
+    }
+
+    for (size_t i = 0; i < session->samples_index; i++) {
+        const struct pf2_sample *sample = &session->samples[i];
+        size += sizeof(VALUE) * sample->depth;
+        size += sizeof(int) * sample->depth;
+        size += sizeof(uintptr_t) * sample->native_stack_depth;
+    }
+
+    return size;
+}
+
+// Utility function to deep-copy a pf2_sample from src to dest.
+// For cmes, linenos, and native_stack, this function allocates exactly the
+// required amount of memory, rather than the configured maximum capacity.
+static bool
+pf2_sample_deep_copy(struct pf2_sample *dest, const struct pf2_sample *src)
+{
+    memset(dest, 0, sizeof(struct pf2_sample));
+
+    dest->context_pthread = src->context_pthread;
+    dest->depth = src->depth;
+    dest->native_stack_depth = src->native_stack_depth;
+    dest->consumed_time_ns = src->consumed_time_ns;
+    dest->timestamp_ns = src->timestamp_ns;
+
+    if (src->depth > 0) {
+        dest->cmes = malloc(sizeof(VALUE) * src->depth);
+        dest->linenos = malloc(sizeof(int) * src->depth);
+        if (dest->cmes == NULL || dest->linenos == NULL) {
+            goto err;
+        }
+        memcpy(dest->cmes, src->cmes, sizeof(VALUE) * src->depth);
+        memcpy(dest->linenos, src->linenos, sizeof(int) * src->depth);
+    }
+
+    if (src->native_stack_depth > 0) {
+        dest->native_stack = malloc(sizeof(uintptr_t) * src->native_stack_depth);
+        if (dest->native_stack == NULL) {
+            goto err;
+        }
+        memcpy(dest->native_stack, src->native_stack, sizeof(uintptr_t) * src->native_stack_depth);
+    }
+
+    return true;
+
+err:
+    free(dest->cmes);
+    free(dest->linenos);
+    free(dest->native_stack);
+    dest->cmes = NULL;
+    dest->linenos = NULL;
+    dest->native_stack = NULL;
+    return false;
 }

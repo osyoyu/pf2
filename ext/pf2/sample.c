@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include <stdlib.h>
 #include <time.h>
 #include <pthread.h>
 
@@ -9,15 +10,33 @@
 #include "backtrace_state.h"
 #include "sample.h"
 
-static int capture_native_backtrace(struct pf2_sample *sample);
+static int capture_native_backtrace(struct pf2_sample *sample, int max_native_depth);
 static int backtrace_on_ok(void *data, uintptr_t pc);
+
+void
+pf2_sample_free(struct pf2_sample *sample)
+{
+    free(sample->cmes);
+    free(sample->linenos);
+    free(sample->native_stack);
+    sample->cmes = NULL;
+    sample->linenos = NULL;
+    sample->native_stack = NULL;
+}
 
 // Capture a sample from the current thread.
 bool
-pf2_sample_capture(struct pf2_sample *sample)
+pf2_sample_capture(struct pf2_sample *sample, const struct pf2_configuration *config)
 {
-    // Initialize sample
-    memset(sample, 0, sizeof(struct pf2_sample));
+    if (sample->cmes == NULL || sample->linenos == NULL || sample->native_stack == NULL) {
+        return false;
+    }
+
+    // Reset per-sample fields
+    sample->depth = 0;
+    sample->native_stack_depth = 0;
+    sample->consumed_time_ns = 0;
+    sample->timestamp_ns = 0;
 
     // Record the current time
     struct timespec now;
@@ -27,10 +46,10 @@ pf2_sample_capture(struct pf2_sample *sample)
     sample->context_pthread = pthread_self();
 
     // Obtain the current stack from Ruby
-    sample->depth = rb_profile_frames(0, PF2_SAMPLE_MAX_RUBY_DEPTH, sample->cmes, sample->linenos);
+    sample->depth = rb_profile_frames(0, config->max_ruby_depth, sample->cmes, sample->linenos);
 
     // Capture C-level backtrace
-    sample->native_stack_depth = capture_native_backtrace(sample);
+    sample->native_stack_depth = capture_native_backtrace(sample, config->max_native_depth);
 
     return true;
 }
@@ -39,10 +58,11 @@ pf2_sample_capture(struct pf2_sample *sample)
 struct bt_data {
     struct pf2_sample *pf2_sample;
     int index;
+    int max_native_depth;
 };
 
 static int
-capture_native_backtrace(struct pf2_sample *sample)
+capture_native_backtrace(struct pf2_sample *sample, int max_native_depth)
 {
     struct backtrace_state *state = global_backtrace_state;
     assert(state != NULL);
@@ -50,6 +70,7 @@ capture_native_backtrace(struct pf2_sample *sample)
     struct bt_data data;
     data.pf2_sample = sample;
     data.index = 0;
+    data.max_native_depth = max_native_depth;
 
     // Capture the current PC
     // Skip the first 2 frames (capture_native_backtrace, sigprof_handler)
@@ -65,7 +86,7 @@ backtrace_on_ok(void *data, uintptr_t pc)
     struct pf2_sample *sample = bt_data->pf2_sample;
 
     // Store the PC value
-    if (bt_data->index < PF2_SAMPLE_MAX_NATIVE_DEPTH) {
+    if (bt_data->index < bt_data->max_native_depth) {
         sample->native_stack[bt_data->index] = pc;
         bt_data->index++;
     }

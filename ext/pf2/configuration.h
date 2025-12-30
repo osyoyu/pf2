@@ -11,10 +11,16 @@ enum pf2_time_mode {
 struct pf2_configuration {
     int interval_ms;
     enum pf2_time_mode time_mode;
+    int max_ruby_depth;
+    int max_native_depth;
 };
 
 #define PF2_DEFAULT_INTERVAL_MS 9
 #define PF2_DEFAULT_TIME_MODE PF2_TIME_MODE_CPU_TIME
+#define PF2_DEFAULT_MAX_RUBY_DEPTH 200
+#define PF2_DEFAULT_MAX_NATIVE_DEPTH 300
+#define PF2_MAX_RUBY_STACK_DEPTH 8192
+#define PF2_MAX_NATIVE_STACK_DEPTH 8192
 
 struct pf2_configuration *pf2_configuration_new_from_options_hash(VALUE options_hash);
 void pf2_configuration_free(struct pf2_configuration *config);

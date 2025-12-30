@@ -100,6 +100,8 @@ Pf2.start(
   interval_ms: 9,        # Integer: The sampling interval in milliseconds (default: 9)
   time_mode: :cpu,        # `:cpu` or `:wall`: The sampling timer's mode
                           # (default: `:cpu` for SignalScheduler, `:wall` for TimerThreadScheduler)
+  max_depth: 200,         # Integer: Maximum Ruby stack depth to capture (default: 200, max: 8192)
+  max_native_depth: 300,  # Integer: Maximum Native stack depth to capture (default: 300, max: 8192)
   threads: [th1, th2],    # `Array<Thread>` | `:all`: A list of Ruby Threads to be tracked.
                           # When `:all` or unspecified, Pf2 will track all active Threads.
 )
