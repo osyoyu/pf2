@@ -38,6 +38,8 @@ struct pf2_ser_function {
 struct pf2_ser {
     uint64_t start_timestamp_ns;
     uint64_t duration_ns;
+    uint64_t collected_sample_count;
+    uint64_t dropped_sample_count;
 
     struct pf2_ser_sample *samples;
     size_t samples_count;

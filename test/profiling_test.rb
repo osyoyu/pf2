@@ -54,4 +54,34 @@ class ProfilingTest < Minitest::Test
 
     assert_equal 2, profile[:samples].map { |s| s[:ruby_thread_id] }.uniq.size
   end
+
+  def test_collected_sample_count
+    session = Pf2::Session.new(interval_ms: 1)
+    session.start
+    sleep 1 # wait for profiler start: perhaps add a "wait" option to Pf2::Session?
+    # can't this be Process.kill("SIGPROF", Process.pid) ?
+    100000.times { +"foo" + +"bar" }
+    profile = session.stop
+
+    assert_kind_of(Integer, profile[:collected_sample_count])
+    assert_operator(profile[:collected_sample_count], :>, 0)
+  end
+
+  def test_dropped_sample_count
+    session = Pf2::Session.new(interval_ms: 1)
+    previous_stress = GC.stress
+    sleep 1 # wait for profiler start
+
+    session.start
+    begin
+      GC.stress = true # trigger sample dropping due to GC
+      50.times { Object.new; +"foo" + +"bar" }
+    ensure
+      GC.stress = previous_stress
+    end
+    profile = session.stop
+
+    assert_kind_of(Integer, profile[:dropped_sample_count])
+    assert_operator(profile[:dropped_sample_count], :>, 0)
+  end
 end

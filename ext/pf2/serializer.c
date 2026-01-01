@@ -1,6 +1,7 @@
 #include <time.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdatomic.h>
 
 #include <ruby.h>
 #include <ruby/debug.h>
@@ -28,6 +29,9 @@ pf2_ser_new(void) {
     if (ser == NULL) { goto err; }
     ser->start_timestamp_ns = 0;
     ser->duration_ns = 0;
+
+    ser->collected_sample_count = 0;
+    ser->dropped_sample_count = 0;
 
     ser->samples = NULL;
     ser->samples_count = 0;
@@ -76,6 +80,10 @@ pf2_ser_prepare(struct pf2_ser *serializer, struct pf2_session *session) {
         (uint64_t)session->start_time_realtime.tv_sec * 1000000000ULL +
         (uint64_t)session->start_time_realtime.tv_nsec;
     serializer->duration_ns = session->duration_ns;
+    serializer->collected_sample_count =
+        atomic_load_explicit(&session->collected_sample_count, memory_order_relaxed);
+    serializer->dropped_sample_count =
+        atomic_load_explicit(&session->dropped_sample_count, memory_order_relaxed);
 
     // Process samples
     for (size_t i = 0; i < session->samples_index; i++) {
@@ -127,6 +135,8 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
     // Add metadata
     rb_hash_aset(hash, ID2SYM(rb_intern("start_timestamp_ns")), ULL2NUM(serializer->start_timestamp_ns));
     rb_hash_aset(hash, ID2SYM(rb_intern("duration_ns")), ULL2NUM(serializer->duration_ns));
+    rb_hash_aset(hash, ID2SYM(rb_intern("collected_sample_count")), ULL2NUM(serializer->collected_sample_count));
+    rb_hash_aset(hash, ID2SYM(rb_intern("dropped_sample_count")), ULL2NUM(serializer->dropped_sample_count));
 
     // Add samples
     VALUE samples = rb_ary_new_capa(serializer->samples_count);
