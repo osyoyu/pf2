@@ -155,11 +155,13 @@ sample_collector_thread(void *arg)
             // Ensure we have capacity before adding a new sample
             if (!ensure_sample_capacity(session)) {
                 // Failed to expand buffer
+                atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
                 PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
                 break;
             }
 
             session->samples[session->samples_index++] = sample;
+            atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
         }
 
         // Sleep for 100 ms
@@ -190,6 +192,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
         PF2_DEBUG_LOG("Dropping sample: Garbage collection is in progress\n");
+        atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
         return;
     }
 
@@ -197,6 +200,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 
     if (pf2_sample_capture(&sample) == false) {
         PF2_DEBUG_LOG("Dropping sample: Failed to capture sample\n");
+        atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
         return;
     }
 
@@ -204,6 +208,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     if (pf2_ringbuffer_push(session->rbuf, &sample) == false) {
         // Copy failed. The sample buffer is full.
         PF2_DEBUG_LOG("Dropping sample: Sample buffer is full\n");
+        atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
         return;
     }
 
@@ -349,6 +354,10 @@ pf2_session_alloc(VALUE self)
     if (session->samples == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
+
+    // collected_sample_count, dropped_sample_count
+    atomic_store_explicit(&session->collected_sample_count, 0, memory_order_relaxed);
+    atomic_store_explicit(&session->dropped_sample_count, 0, memory_order_relaxed);
 
     // start_time_realtime, start_time
     session->start_time_realtime = (struct timespec){0};

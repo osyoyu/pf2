@@ -30,6 +30,9 @@ struct pf2_session {
     struct timespec start_time; // When profiling started
     uint64_t duration_ns; // Duration of profiling in nanoseconds
 
+    atomic_uint_fast64_t collected_sample_count; // Number of samples copied out of the ringbuffer
+    atomic_uint_fast64_t dropped_sample_count; // Number of samples dropped for any reason
+
     struct pf2_configuration *configuration;
 };
 
