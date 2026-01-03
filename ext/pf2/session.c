@@ -19,10 +19,8 @@
 #include "session.h"
 #include "serializer.h"
 
-#ifndef HAVE_TIMER_CREATE
-// Global session pointer for setitimer fallback
+// Global session pointer
 static struct pf2_session *global_current_session = NULL;
-#endif
 
 static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
@@ -40,10 +38,11 @@ rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self)
     rb_scan_args(argc, argv, ":", &kwargs);
     ID kwarg_labels[] = {
         rb_intern("interval_ms"),
-        rb_intern("time_mode")
+        rb_intern("time_mode"),
+        rb_intern("_test_no_install_timer")
     };
     VALUE *kwarg_values = NULL;
-    rb_get_kwargs(kwargs, kwarg_labels, 0, 2, kwarg_values);
+    rb_get_kwargs(kwargs, kwarg_labels, 0, 3, kwarg_values);
 
     session->configuration = pf2_configuration_new_from_options_hash(kwargs);
 
@@ -87,58 +86,60 @@ rb_pf2_session_start(VALUE self)
     }
 #endif
 
-#ifdef HAVE_TIMER_CREATE
-    // Configure a kernel timer to send SIGPROF periodically
-    struct sigevent sev;
-    sev.sigev_notify = SIGEV_SIGNAL;
-    sev.sigev_signo = SIGPROF;
-    sev.sigev_value.sival_ptr = session; // Passed as info->si_value.sival_ptr
-    if (timer_create(
-        session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
-            ? CLOCK_PROCESS_CPUTIME_ID
-            : CLOCK_MONOTONIC,
-        &sev,
-        &session->timer
-    ) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to create timer");
-    }
-    struct itimerspec its = {
-        .it_value = {
-            .tv_sec = 0,
-            .tv_nsec = session->configuration->interval_ms * 1000000,
-        },
-        .it_interval = {
-            .tv_sec = 0,
-            .tv_nsec = session->configuration->interval_ms * 1000000,
-        },
-    };
-    if (timer_settime(session->timer, 0, &its, NULL) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to start timer");
-    }
-#else
-    // Use setitimer as fallback
-    // Some platforms (e.g. macOS) do not have timer_create(3).
-    // setitimer(3) can be used as a alternative, but has limited functionality.
     global_current_session = session;
 
-    struct itimerval itv = {
-        .it_value = {
-            .tv_sec = 0,
-            .tv_usec = session->configuration->interval_ms * 1000,
-        },
-        .it_interval = {
-            .tv_sec = 0,
-            .tv_usec = session->configuration->interval_ms * 1000,
-        },
-    };
-    int which_timer = session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
-        ? ITIMER_PROF  // CPU time (sends SIGPROF)
-        : ITIMER_REAL; // Wall time (sends SIGALRM)
+    if (!session->configuration->_test_no_install_timer) {
+#ifdef HAVE_TIMER_CREATE
+        // Configure a kernel timer to send SIGPROF periodically
+        struct sigevent sev;
+        sev.sigev_notify = SIGEV_SIGNAL;
+        sev.sigev_signo = SIGPROF;
+        if (timer_create(
+            session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
+                ? CLOCK_PROCESS_CPUTIME_ID
+                : CLOCK_MONOTONIC,
+            &sev,
+            &session->timer
+        ) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to create timer");
+        }
+        struct itimerspec its = {
+            .it_value = {
+                .tv_sec = 0,
+                .tv_nsec = session->configuration->interval_ms * 1000000,
+            },
+            .it_interval = {
+                .tv_sec = 0,
+                .tv_nsec = session->configuration->interval_ms * 1000000,
+            },
+        };
+        if (timer_settime(session->timer, 0, &its, NULL) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to start timer");
+        }
+#else
+        // Use setitimer as fallback
+        // Some platforms (e.g. macOS) do not have timer_create(3).
+        // setitimer(3) can be used as a alternative, but has limited functionality.
 
-    if (setitimer(which_timer, &itv, NULL) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to start timer");
-    }
+        struct itimerval itv = {
+            .it_value = {
+                .tv_sec = 0,
+                .tv_usec = session->configuration->interval_ms * 1000,
+            },
+            .it_interval = {
+                .tv_sec = 0,
+                .tv_usec = session->configuration->interval_ms * 1000,
+            },
+        };
+        int which_timer = session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
+            ? ITIMER_PROF  // CPU time (sends SIGPROF)
+            : ITIMER_REAL; // Wall time (sends SIGALRM)
+
+        if (setitimer(which_timer, &itv, NULL) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to start timer");
+        }
 #endif
+    } // if !__test_no_install_timer
 
     return Qtrue;
 }
@@ -183,11 +184,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 #endif
 
     struct pf2_session *session;
-#ifdef HAVE_TIMER_CREATE
-    session = info->si_value.sival_ptr;
-#else
     session = global_current_session;
-#endif
 
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
@@ -279,8 +276,10 @@ pf2_session_stop(struct pf2_session *session)
 
     // Disarm and delete the timer.
 #ifdef HAVE_TIMER_CREATE
-    if (timer_delete(session->timer) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to delete timer");
+    if (!session->configuration->_test_no_install_timer) {
+        if (timer_delete(session->timer) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to delete timer");
+        }
     }
 #else
     struct itimerval zero_timer = {{0, 0}, {0, 0}};

@@ -1,10 +1,12 @@
 #include <ruby.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "configuration.h"
 
 static int extract_interval_ms(VALUE options_hash);
 static enum pf2_time_mode extract_time_mode(VALUE options_hash);
+static bool extract__test_no_install_timer(VALUE options_hash);
 
 struct pf2_configuration *
 pf2_configuration_new_from_options_hash(VALUE options_hash)
@@ -16,6 +18,7 @@ pf2_configuration_new_from_options_hash(VALUE options_hash)
 
     config->interval_ms = extract_interval_ms(options_hash);
     config->time_mode = extract_time_mode(options_hash);
+    config->_test_no_install_timer = extract__test_no_install_timer(options_hash);
 
     return config;
 }
@@ -55,6 +58,17 @@ extract_time_mode(VALUE options_hash)
         VALUE time_mode_str = rb_obj_as_string(time_mode);
         rb_raise(rb_eArgError, "Invalid time mode: %s", StringValueCStr(time_mode_str));
     }
+}
+
+static bool
+extract__test_no_install_timer(VALUE options_hash)
+{
+    if (options_hash == Qnil) {
+        return PF2_DEFAULT__TEST_NO_INSTALL_TIMER;
+    }
+
+    VALUE _test_no_install_timer = rb_hash_aref(options_hash, ID2SYM(rb_intern("_test_no_install_timer")));
+    return RTEST(_test_no_install_timer);
 }
 
 void
