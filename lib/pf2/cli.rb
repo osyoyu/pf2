@@ -26,7 +26,7 @@ module Pf2
       when 'version'
         puts VERSION
         return 0
-      when '--help'
+      when nil, '--help'
         STDERR.puts <<~__EOS__
         Usage: #{program_name} COMMAND [options]
 
