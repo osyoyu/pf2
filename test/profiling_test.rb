@@ -68,4 +68,18 @@ class ProfilingTest < Minitest::Test
     assert_kind_of(Integer, profile[:dropped_sample_count])
     assert_operator(profile[:dropped_sample_count], :>=, 0)
   end
+
+  def test_native_frames_capture
+    session = Pf2::Session.new(_test_no_install_timer: true)
+    session.start
+    sample_now
+    profile = session.stop
+
+    native_names = profile[:functions]
+      .select {|func| func[:implementation] == :native }
+      .map {|func| func[:name] }
+      .uniq.compact
+
+    assert native_names.include?('rb_vm_exec'), "rb_vm_exec not found in native frames: [#{native_names.join(", ")}]"
+  end
 end
