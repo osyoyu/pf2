@@ -19,10 +19,8 @@
 #include "session.h"
 #include "serializer.h"
 
-#ifndef HAVE_TIMER_CREATE
-// Global session pointer for setitimer fallback
+// Pointer to current active session, for access from signal handlers
 static struct pf2_session *global_current_session = NULL;
-#endif
 
 static void *sample_collector_thread(void *arg);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
@@ -55,6 +53,9 @@ rb_pf2_session_start(VALUE self)
 {
     struct pf2_session *session;
     TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
+
+    // Store pointer to current session for access from signal handlers
+    global_current_session = session;
 
     session->is_running = true;
 
@@ -92,7 +93,6 @@ rb_pf2_session_start(VALUE self)
     struct sigevent sev;
     sev.sigev_notify = SIGEV_SIGNAL;
     sev.sigev_signo = SIGPROF;
-    sev.sigev_value.sival_ptr = session; // Passed as info->si_value.sival_ptr
     if (timer_create(
         session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
             ? CLOCK_PROCESS_CPUTIME_ID
@@ -119,8 +119,6 @@ rb_pf2_session_start(VALUE self)
     // Use setitimer as fallback
     // Some platforms (e.g. macOS) do not have timer_create(3).
     // setitimer(3) can be used as a alternative, but has limited functionality.
-    global_current_session = session;
-
     struct itimerval itv = {
         .it_value = {
             .tv_sec = 0,
@@ -182,12 +180,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     clock_gettime(CLOCK_MONOTONIC, &sig_start_time);
 #endif
 
-    struct pf2_session *session;
-#ifdef HAVE_TIMER_CREATE
-    session = info->si_value.sival_ptr;
-#else
-    session = global_current_session;
-#endif
+    struct pf2_session *session = global_current_session;
 
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
