@@ -23,6 +23,7 @@
 static struct pf2_session *global_current_session = NULL;
 
 static void *sample_collector_thread(void *arg);
+static void drain_ringbuffer(struct pf2_session *session);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 bool ensure_sample_capacity(struct pf2_session *session);
 static void pf2_session_stop(struct pf2_session *session);
@@ -148,19 +149,7 @@ sample_collector_thread(void *arg)
 
     while (session->is_running == true) {
         // Take samples from the ring buffer
-        struct pf2_sample sample;
-        while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
-            // Ensure we have capacity before adding a new sample
-            if (!ensure_sample_capacity(session)) {
-                // Failed to expand buffer
-                atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
-                PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
-                break;
-            }
-
-            session->samples[session->samples_index++] = sample;
-            atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
-        }
+        drain_ringbuffer(session);
 
         // Sleep for 100 ms
         // TODO: Replace with high watermark callback
@@ -169,6 +158,24 @@ sample_collector_thread(void *arg)
     }
 
     return NULL;
+}
+
+static void
+drain_ringbuffer(struct pf2_session *session)
+{
+    struct pf2_sample sample;
+    while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
+        // Ensure we have capacity before adding a new sample
+        if (!ensure_sample_capacity(session)) {
+            // Failed to expand buffer
+            atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
+            PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
+            break;
+        }
+
+        session->samples[session->samples_index++] = sample;
+        atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
+    }
 }
 
 // async-signal-safe
@@ -289,6 +296,7 @@ pf2_session_stop(struct pf2_session *session)
     // Terminate the collector thread
     session->is_running = false;
     pthread_join(*session->collector_thread, NULL);
+    drain_ringbuffer(session);
 }
 
 VALUE
