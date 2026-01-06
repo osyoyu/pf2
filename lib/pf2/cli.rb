@@ -52,6 +52,9 @@ module Pf2
           puts opts
           return 0
         end
+        opts.on('-f', '--format FORMAT', 'Output format') do |format|
+          options[:format] = format
+        end
         opts.on('-o', '--output FILE', 'Output file') do |path|
           options[:output_file] = path
         end
@@ -59,8 +62,25 @@ module Pf2
       option_parser.parse!(argv)
 
       profile = Marshal.load(File.read(argv[0]))
-      report = Pf2::Reporter::FirefoxProfilerSer2.new(profile).emit
-      report = JSON.generate(report)
+
+      format =
+        case options[:format]
+        when nil, 'firefox'
+          :firefox
+        when 'pprof'
+          :pprof
+        else
+          STDERR.puts "Unknown format: #{options[:format]}"
+          return 1
+        end
+
+      case format
+      when :firefox
+        report = Pf2::Reporter::FirefoxProfilerSer2.new(profile).emit
+        report = JSON.generate(report)
+      when :pprof
+        report = Pf2::Reporter::Pprof.new(profile).emit
+      end
 
       if options[:output_file]
         File.write(options[:output_file], report)
