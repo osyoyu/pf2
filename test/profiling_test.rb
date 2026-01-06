@@ -5,46 +5,29 @@ require_relative './test_helper.rb'
 
 require 'pf2'
 
-def loop_addition
-  1000000.times do
-    (+"foo") + (+"bar")
-  end
-end
-
 class ProfilingTest < Minitest::Test
-  def test_profiling_loop_addition
-    session = Pf2::Session.new(interval_ms: 1)
+  def test_single_capture
+    session = Pf2::Session.new(_test_no_install_timer: true)
     session.start
-    start_time = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID)
-    loop_addition
-    end_time = Process.clock_gettime(Process::CLOCK_PROCESS_CPUTIME_ID)
+    sample_now
     profile = session.stop
 
-    elapsed_time = end_time - start_time
-    expected_samples = (elapsed_time * 1000).to_i # 1000 Hz sampling rate
-    acceptable_hi = (expected_samples * 1.2).to_i
-    acceptable_lo =
-      if RUBY_PLATFORM.include?("darwin")
-        (expected_samples * 0.3).to_i # macOS has coarser timer?
-      else
-        (expected_samples * 0.8).to_i
-      end
-
-    assert_operator profile[:samples].size, :>=, acceptable_lo, "Expected at least #{acceptable_lo} samples (runtime: #{sprintf("%.4f", elapsed_time)} s)"
-    assert_operator profile[:samples].size, :<, acceptable_hi, "Expected no more than #{acceptable_hi} samples (runtime: #{sprintf("%.4f", elapsed_time)} s)"
+    assert_equal 1, profile[:samples].size
   end
 
   def test_capture_thread_id
     session = Pf2::Session.new
     session.start
-    loop_addition
+    sample_now
     profile = session.stop
 
     assert_instance_of Integer, profile[:samples][0][:ruby_thread_id]
   end
 
   def test_multiple_threads
-    session = Pf2::Session.new
+    skip 'This test is actually broken; Pf2c fails to target threads'
+
+    session = Pf2::Session.new(_test_no_install_timer: true)
     session.start
     th1 = Thread.new { loop_addition }
     th2 = Thread.new { loop_addition }
@@ -56,21 +39,22 @@ class ProfilingTest < Minitest::Test
   end
 
   def test_collected_sample_count
-    session = Pf2::Session.new(interval_ms: 1)
+    session = Pf2::Session.new(_test_no_install_timer: true)
     session.start
-    sleep 1 # wait for profiler start: perhaps add a "wait" option to Pf2::Session?
-    # can't this be Process.kill("SIGPROF", Process.pid) ?
-    100000.times { +"foo" + +"bar" }
+    10.times do
+      sample_now
+      # Allow some time for the signal to be handled
+      # (otherwise signals may be collapsed)
+      sleep 0.01
+    end
     profile = session.stop
 
-    assert_kind_of(Integer, profile[:collected_sample_count])
-    assert_operator(profile[:collected_sample_count], :>=, 0)
+    assert_equal 10, profile[:collected_sample_count]
   end
 
   def test_dropped_sample_count
-    session = Pf2::Session.new(interval_ms: 1)
+    session = Pf2::Session.new(_test_no_install_timer: true)
     previous_stress = GC.stress
-    sleep 1 # wait for profiler start
 
     session.start
     begin

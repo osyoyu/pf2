@@ -19,12 +19,11 @@
 #include "session.h"
 #include "serializer.h"
 
-#ifndef HAVE_TIMER_CREATE
-// Global session pointer for setitimer fallback
+// Pointer to current active session, for access from signal handlers
 static struct pf2_session *global_current_session = NULL;
-#endif
 
 static void *sample_collector_thread(void *arg);
+static void drain_ringbuffer(struct pf2_session *session);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 bool ensure_sample_capacity(struct pf2_session *session);
 static void pf2_session_stop(struct pf2_session *session);
@@ -40,10 +39,11 @@ rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self)
     rb_scan_args(argc, argv, ":", &kwargs);
     ID kwarg_labels[] = {
         rb_intern("interval_ms"),
-        rb_intern("time_mode")
+        rb_intern("time_mode"),
+        rb_intern("_test_no_install_timer")
     };
     VALUE *kwarg_values = NULL;
-    rb_get_kwargs(kwargs, kwarg_labels, 0, 2, kwarg_values);
+    rb_get_kwargs(kwargs, kwarg_labels, 0, 3, kwarg_values);
 
     session->configuration = pf2_configuration_new_from_options_hash(kwargs);
 
@@ -55,6 +55,9 @@ rb_pf2_session_start(VALUE self)
 {
     struct pf2_session *session;
     TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
+
+    // Store pointer to current session for access from signal handlers
+    global_current_session = session;
 
     session->is_running = true;
 
@@ -87,58 +90,60 @@ rb_pf2_session_start(VALUE self)
     }
 #endif
 
-#ifdef HAVE_TIMER_CREATE
-    // Configure a kernel timer to send SIGPROF periodically
-    struct sigevent sev;
-    sev.sigev_notify = SIGEV_SIGNAL;
-    sev.sigev_signo = SIGPROF;
-    sev.sigev_value.sival_ptr = session; // Passed as info->si_value.sival_ptr
-    if (timer_create(
-        session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
-            ? CLOCK_PROCESS_CPUTIME_ID
-            : CLOCK_MONOTONIC,
-        &sev,
-        &session->timer
-    ) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to create timer");
-    }
-    struct itimerspec its = {
-        .it_value = {
-            .tv_sec = 0,
-            .tv_nsec = session->configuration->interval_ms * 1000000,
-        },
-        .it_interval = {
-            .tv_sec = 0,
-            .tv_nsec = session->configuration->interval_ms * 1000000,
-        },
-    };
-    if (timer_settime(session->timer, 0, &its, NULL) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to start timer");
-    }
-#else
-    // Use setitimer as fallback
-    // Some platforms (e.g. macOS) do not have timer_create(3).
-    // setitimer(3) can be used as a alternative, but has limited functionality.
     global_current_session = session;
 
-    struct itimerval itv = {
-        .it_value = {
-            .tv_sec = 0,
-            .tv_usec = session->configuration->interval_ms * 1000,
-        },
-        .it_interval = {
-            .tv_sec = 0,
-            .tv_usec = session->configuration->interval_ms * 1000,
-        },
-    };
-    int which_timer = session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
-        ? ITIMER_PROF  // CPU time (sends SIGPROF)
-        : ITIMER_REAL; // Wall time (sends SIGALRM)
+    if (!session->configuration->_test_no_install_timer) {
+#ifdef HAVE_TIMER_CREATE
+        // Configure a kernel timer to send SIGPROF periodically
+        struct sigevent sev;
+        sev.sigev_notify = SIGEV_SIGNAL;
+        sev.sigev_signo = SIGPROF;
+        if (timer_create(
+            session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
+                ? CLOCK_PROCESS_CPUTIME_ID
+                : CLOCK_MONOTONIC,
+            &sev,
+            &session->timer
+        ) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to create timer");
+        }
+        struct itimerspec its = {
+            .it_value = {
+                .tv_sec = 0,
+                .tv_nsec = session->configuration->interval_ms * 1000000,
+            },
+            .it_interval = {
+                .tv_sec = 0,
+                .tv_nsec = session->configuration->interval_ms * 1000000,
+            },
+        };
+        if (timer_settime(session->timer, 0, &its, NULL) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to start timer");
+        }
+#else
+        // Use setitimer as fallback
+        // Some platforms (e.g. macOS) do not have timer_create(3).
+        // setitimer(3) can be used as a alternative, but has limited functionality.
 
-    if (setitimer(which_timer, &itv, NULL) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to start timer");
-    }
+        struct itimerval itv = {
+            .it_value = {
+                .tv_sec = 0,
+                .tv_usec = session->configuration->interval_ms * 1000,
+            },
+            .it_interval = {
+                .tv_sec = 0,
+                .tv_usec = session->configuration->interval_ms * 1000,
+            },
+        };
+        int which_timer = session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
+            ? ITIMER_PROF  // CPU time (sends SIGPROF)
+            : ITIMER_REAL; // Wall time (sends SIGALRM)
+
+        if (setitimer(which_timer, &itv, NULL) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to start timer");
+        }
 #endif
+    } // if !__test_no_install_timer
 
     return Qtrue;
 }
@@ -150,19 +155,7 @@ sample_collector_thread(void *arg)
 
     while (session->is_running == true) {
         // Take samples from the ring buffer
-        struct pf2_sample sample;
-        while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
-            // Ensure we have capacity before adding a new sample
-            if (!ensure_sample_capacity(session)) {
-                // Failed to expand buffer
-                atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
-                PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
-                break;
-            }
-
-            session->samples[session->samples_index++] = sample;
-            atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
-        }
+        drain_ringbuffer(session);
 
         // Sleep for 100 ms
         // TODO: Replace with high watermark callback
@@ -171,6 +164,24 @@ sample_collector_thread(void *arg)
     }
 
     return NULL;
+}
+
+static void
+drain_ringbuffer(struct pf2_session *session)
+{
+    struct pf2_sample sample;
+    while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
+        // Ensure we have capacity before adding a new sample
+        if (!ensure_sample_capacity(session)) {
+            // Failed to expand buffer
+            atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
+            PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
+            break;
+        }
+
+        session->samples[session->samples_index++] = sample;
+        atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
+    }
 }
 
 // async-signal-safe
@@ -182,12 +193,7 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
     clock_gettime(CLOCK_MONOTONIC, &sig_start_time);
 #endif
 
-    struct pf2_session *session;
-#ifdef HAVE_TIMER_CREATE
-    session = info->si_value.sival_ptr;
-#else
-    session = global_current_session;
-#endif
+    struct pf2_session *session = global_current_session;
 
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
@@ -279,8 +285,10 @@ pf2_session_stop(struct pf2_session *session)
 
     // Disarm and delete the timer.
 #ifdef HAVE_TIMER_CREATE
-    if (timer_delete(session->timer) == -1) {
-        rb_raise(rb_eRuntimeError, "Failed to delete timer");
+    if (!session->configuration->_test_no_install_timer) {
+        if (timer_delete(session->timer) == -1) {
+            rb_raise(rb_eRuntimeError, "Failed to delete timer");
+        }
     }
 #else
     struct itimerval zero_timer = {{0, 0}, {0, 0}};
@@ -296,6 +304,7 @@ pf2_session_stop(struct pf2_session *session)
     // Terminate the collector thread
     session->is_running = false;
     pthread_join(*session->collector_thread, NULL);
+    drain_ringbuffer(session);
 }
 
 VALUE

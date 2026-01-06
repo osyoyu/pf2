@@ -1,5 +1,10 @@
 # frozen_string_literal: true
 
+def sample_now
+  Process.kill("SIGPROF", Process.pid)
+end
+
+
 def system_with_timeout(command, timeout)
   pid = spawn(command, pgroup: true)
   pgid = Process.getpgid(pid)
