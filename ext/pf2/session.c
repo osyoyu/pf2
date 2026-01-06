@@ -320,7 +320,7 @@ pf2_session_alloc(VALUE self)
 {
     // Initialize state for libbacktrace
     if (global_backtrace_state == NULL) {
-        global_backtrace_state = backtrace_create_state("pf2", 1, pf2_backtrace_print_error, NULL);
+        global_backtrace_state = backtrace_create_state(NULL, 1, pf2_backtrace_print_error, NULL);
         if (global_backtrace_state == NULL) {
             rb_raise(rb_eRuntimeError, "Failed to initialize libbacktrace");
         }
