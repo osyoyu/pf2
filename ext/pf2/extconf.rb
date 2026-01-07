@@ -1,10 +1,25 @@
 require 'mkmf'
 require 'mini_portile2'
+require 'fileutils'
+
+gem_root = File.expand_path(File.join(File.dirname(__FILE__), '..', '..'))
 
 libbacktrace = MiniPortile.new('libbacktrace', '1.0.0')
-libbacktrace.source_directory = File.expand_path(File.join(File.dirname(__FILE__), '..', '..', 'vendor', 'libbacktrace'))
+libbacktrace.source_directory = File.join(gem_root, 'vendor', 'libbacktrace')
+libbacktrace.patch_files = Dir.glob(File.join(gem_root, 'ext', 'patches', 'libbacktrace', '*.patch'))
 libbacktrace.configure_options << 'CFLAGS=-fPIC'
-libbacktrace.cook
+
+# Expand 'libbacktrace.cook' to call #patch on source_directory files
+libbacktrace.prepare_build_directory
+# Added: Copy source to build_directory
+build_directory = libbacktrace.send(:work_path)
+FileUtils.cp_r(File.join(libbacktrace.source_directory, '.'), build_directory)
+libbacktrace.patch
+libbacktrace.configure unless libbacktrace.configured?
+libbacktrace.compile
+libbacktrace.install unless libbacktrace.installed?
+# END expand 'libbacktrace.cook'
+
 libbacktrace.mkmf_config
 
 if !have_func('backtrace_full', 'backtrace.h')
