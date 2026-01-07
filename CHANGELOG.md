@@ -1,8 +1,23 @@
 ## [Unreleased]
 
+### Added
+
+- `Pf2.profile` now accepts the same options as `Pf2.start`.
+- The resulting profile now has `collected_sample_count` and `dropped_sample_count` fields.
+
+### Fixed
+
+- Samples captured after the collector thread was stopped now get included in the profile.
+  - This shouldn't matter in practice (this all happens after `Pf2.stop` is called).
+
 ### Changed
 
+- Accepted max stack depth is expanded to 1024 for Ruby (was 200) and 512 for native (was 300).
+  - This is not configurable, but should be sufficient for most use cases. Please open an issue if you need higher limits.
 - Pf2.profile now accepts the same parameters as Pf2.start.
+- Internal changes
+  - Updated libbacktrace to the latest version as of 2026/1/8.
+  - Tests are now much more stabilized.
 
 
 ## [0.11.3] - 2025-12-28
