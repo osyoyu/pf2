@@ -1,0 +1,32 @@
+From 4cd047583bc48ad0617fb6c036174de062573e68 Mon Sep 17 00:00:00 2001
+From: Daisuke Aritomo <osyoyu@osyoyu.com>
+Date: Wed, 7 Jan 2026 02:50:54 +0900
+Subject: [PATCH] Support MACH_O_MH_BUNDLE
+
+---
+ macho.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/macho.c b/macho.c
+index 9f8738d..5ea07ae 100644
+--- a/macho.c
++++ b/macho.c
+@@ -92,6 +92,7 @@ struct macho_header_fat
+ 
+ #define MACH_O_MH_EXECUTE	0x02
+ #define MACH_O_MH_DYLIB		0x06
++#define MACH_O_MH_BUNDLE	0x08
+ #define MACH_O_MH_DSYM		0x0a
+ 
+ /* A component of a fat file.  A fat file starts with a
+@@ -1062,6 +1063,7 @@ macho_add (struct backtrace_state *state, const char *filename, int descriptor,
+     {
+     case MACH_O_MH_EXECUTE:
+     case MACH_O_MH_DYLIB:
++    case MACH_O_MH_BUNDLE:
+     case MACH_O_MH_DSYM:
+       break;
+     default:
+-- 
+2.39.5 (Apple Git-154)
+
