@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.12.0] - 2026-01-09
+
 ### Added
 
 - `Pf2.profile` now accepts the same options as `Pf2.start`.
