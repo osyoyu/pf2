@@ -6,7 +6,6 @@ A experimental sampling-based profiler for Ruby 3.3+.
 - GitHub: https://github.com/osyoyu/pf2
 - Documentation: https://osyoyu.github.io/pf2/
 
-NOTE: This README contains some outdated information!
 
 Notable Capabilites
 --------
@@ -98,10 +97,7 @@ Pf2 accepts the following configuration keys:
 ```rb
 Pf2.start(
   interval_ms: 9,        # Integer: The sampling interval in milliseconds (default: 9)
-  time_mode: :cpu,        # `:cpu` or `:wall`: The sampling timer's mode
-                          # (default: `:cpu` for SignalScheduler, `:wall` for TimerThreadScheduler)
-  threads: [th1, th2],    # `Array<Thread>` | `:all`: A list of Ruby Threads to be tracked.
-                          # When `:all` or unspecified, Pf2 will track all active Threads.
+  time_mode: :cpu,       # `:cpu` or `:wall`: The sampling timer's mode
 )
 ```
 
@@ -132,36 +128,33 @@ Pf2 is a _sampling profiler_. This means that Pf2 collects _samples_ of program 
 
 Pf2 uses the `rb_profile_thread_frames()` API for sampling. When to do so is controlled by _Schedulers_, described in the following section.
 
-### Schedulers
+### Scheduling
 
-Schedulers determine when to execute sample collection, based on configuration (time mode and interval). Pf2 has two schedulers available.
+Schedulers determine when to execute sample collection, based on configuration (time mode and interval).
 
-#### SignalScheduler (Linux-only)
+#### Signal-based scheduling
 
-The first is the `SignalScheduler`, based on POSIX timers. Pf2 will use this scheduler when possible. SignalScheduler creates a POSIX timer for each Ruby Thread (the underlying pthread to be more accurate) using `timer_create(2)`. This leaves the actual time-keeping to the OS, which is capable of tracking accurate per-thread CPU time usage.
+Pf2 schedules sample collection using POSIX timers. It creates a POSIX timer using `timer_create(3)` where available, or otherwise `setitimer(3)`. This leaves the actual time-keeping to the operating system kernel, which is capable of tracking accurate per-thread CPU time usage.
 
-When the specified interval has arrived (the timer has _expired_), the OS delivers us a SIGPROF signal. This is why the scheduler is named SignalScheduler.
+When the specified interval has arrived (the timer has _expired_), the OS delivers us a SIGPROF signal.
 
 Signals are directed to Ruby Threads' underlying pthread, effectively "pausing" the Thread's activity. This routing is done using `SIGEV_THREAD_ID`, which is a Linux-only feature. Sample collection is done in the signal handler, which is expected to be more _accurate_, capturing the paused Thread's activity.
 
 This scheduler heavily relies on Ruby's 1:N Thread model (1 Ruby Threads is strongly tied to a native pthread). It will not work properly in MaNy (`RUBY_MN_THREADS=1`).
 
-#### TimerThreadScheduler
+#### ~~Timer-thread based scheduling~~
+
+Note: Timer thread-based scheduling has been removed in v0.10.0, when the profiling backend has been rewritten in C. This may come back in the future if needed.
 
 Another scheduler is the `TimerThreadScheduler`, which maintains a time-keeping thread by itself. A new native thread (pthread on Linux/macOS) will be created, and an infinite loop will be run inside. After `sleep(2)`-ing for the specified interval time, sampling will be queued using Ruby's Postponed Job API.
 
 This scheduler is wall-time only, and does not support CPU-time based profiling.
-
-#### macOS Support
-
-On platforms where `timer_create()` is not supported (namely macOS), Pf2 falls back to `setitimer()`.
 
 
 Wishlist
 --------
 
 - [Flame Scopes](https://www.brendangregg.com/flamescope.html)
-- More unit/e2e tests
 - more
 
 Development
