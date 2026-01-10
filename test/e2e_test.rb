@@ -50,7 +50,7 @@ class E2ETest < Minitest::Test
     functions = profile[:functions]
     refute_empty functions
 
-    function_names = functions.map { it[:name] }.uniq.compact
+    function_names = functions.map {|f| f[:name] }.uniq.compact
     expected_methods.each do |method_name|
       assert function_names.include?(method_name), "Expected method not found in profile: #{method_name}"
     end
