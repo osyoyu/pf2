@@ -22,7 +22,7 @@ struct pf2_session {
 #endif
     struct pf2_ringbuffer *rbuf;
     atomic_bool is_marking; // Whether garbage collection is in progress
-    pthread_t *collector_thread;
+    VALUE collector_thread;
 
     struct pf2_ser_sample *samples; // Dynamic array of indexed samples
     size_t samples_count;

@@ -27,8 +27,6 @@ struct pf2_stack_key {
     uintptr_t ruby_thread_id;
     size_t *stack;
     size_t stack_count;
-    size_t *native_stack;
-    size_t native_stack_count;
     uint64_t hash;
 };
 
@@ -131,16 +129,12 @@ pf2_location_key_equal(struct pf2_location_key left, struct pf2_location_key rig
 }
 
 static inline uint64_t
-pf2_stack_hash(const size_t *stack, size_t stack_count, const size_t *native_stack, size_t native_count, uintptr_t thread_id)
+pf2_stack_hash(const size_t *stack, size_t stack_count, uintptr_t thread_id)
 {
     uint64_t hash = pf2_hash_mix((uint64_t)thread_id);
     hash = pf2_hash_combine(hash, (uint64_t)stack_count);
     for (size_t i = 0; i < stack_count; i++) {
         hash = pf2_hash_combine(hash, (uint64_t)stack[i]);
-    }
-    hash = pf2_hash_combine(hash, (uint64_t)native_count);
-    for (size_t i = 0; i < native_count; i++) {
-        hash = pf2_hash_combine(hash, (uint64_t)native_stack[i]);
     }
     return hash;
 }
@@ -157,14 +151,10 @@ pf2_stack_key_equal(struct pf2_stack_key left, struct pf2_stack_key right)
     if (left.ruby_thread_id != right.ruby_thread_id) {
         return false;
     }
-    if (left.stack_count != right.stack_count || left.native_stack_count != right.native_stack_count) {
+    if (left.stack_count != right.stack_count) {
         return false;
     }
     if (left.stack_count > 0 && memcmp(left.stack, right.stack, left.stack_count * sizeof(size_t)) != 0) {
-        return false;
-    }
-    if (left.native_stack_count > 0
-        && memcmp(left.native_stack, right.native_stack, left.native_stack_count * sizeof(size_t)) != 0) {
         return false;
     }
     return true;

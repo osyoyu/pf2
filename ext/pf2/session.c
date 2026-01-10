@@ -10,6 +10,7 @@
 #include <time.h>
 
 #include <ruby.h>
+#include <ruby/thread.h>
 #include <ruby/debug.h>
 
 #include <backtrace.h>
@@ -24,7 +25,8 @@
 // Pointer to current active session, for access from signal handlers
 static struct pf2_session *global_current_session = NULL;
 
-static void *sample_collector_thread(void *arg);
+static VALUE sample_collector_thread(void *arg);
+static void *pf2_sleep_no_gvl(void *arg);
 static void drain_ringbuffer(struct pf2_session *session);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 static bool ensure_samples_capacity(struct pf2_session *session);
@@ -37,6 +39,11 @@ static bool location_index_for(
     size_t function_index,
     int32_t lineno,
     size_t address,
+    size_t *out_index
+);
+static bool find_sample_by_ruby_stack(
+    struct pf2_session *session,
+    const struct pf2_ser_sample *sample,
     size_t *out_index
 );
 static struct pf2_ser_function extract_function_from_ruby_frame(VALUE frame);
@@ -91,9 +98,7 @@ rb_pf2_session_start(VALUE self)
         (uint64_t)session->start_time.tv_nsec;
 
     // Spawn a collector thread which periodically wakes up and collects samples
-    if (pthread_create(session->collector_thread, NULL, sample_collector_thread, session) != 0) {
-        rb_raise(rb_eRuntimeError, "Failed to spawn sample collector thread");
-    }
+    session->collector_thread = rb_thread_create(sample_collector_thread, (void *)session);
 
     // Install signal handler for SIGPROF
     struct sigaction sa;
@@ -173,10 +178,10 @@ rb_pf2_session_start(VALUE self)
     return Qtrue;
 }
 
-static void *
+static VALUE
 sample_collector_thread(void *arg)
 {
-    struct pf2_session *session = arg;
+    struct pf2_session *session = (struct pf2_session *)arg;
 
     while (session->is_running == true) {
         // Take samples from the ring buffer
@@ -185,9 +190,17 @@ sample_collector_thread(void *arg)
         // Sleep for 100 ms
         // TODO: Replace with high watermark callback
         struct timespec ts = { .tv_sec = 0, .tv_nsec = 10 * 1000000, }; // 10 ms
-        nanosleep(&ts, NULL);
+        rb_thread_call_without_gvl(pf2_sleep_no_gvl, &ts, RUBY_UBF_IO, NULL);
     }
 
+    return Qnil;
+}
+
+static void *
+pf2_sleep_no_gvl(void *arg)
+{
+    struct timespec *ts = arg;
+    nanosleep(ts, NULL);
     return NULL;
 }
 
@@ -259,23 +272,8 @@ drain_ringbuffer(struct pf2_session *session)
         }
 
         {
-            struct pf2_stack_key key;
-            key.ruby_thread_id = ser_sample.ruby_thread_id;
-            key.stack = ser_sample.stack;
-            key.stack_count = ser_sample.stack_count;
-            key.native_stack = ser_sample.native_stack;
-            key.native_stack_count = ser_sample.native_stack_count;
-            key.hash = pf2_stack_hash(
-                ser_sample.stack,
-                ser_sample.stack_count,
-                ser_sample.native_stack,
-                ser_sample.native_stack_count,
-                ser_sample.ruby_thread_id
-            );
-
-            pf2_stack_map_itr itr = pf2_stack_map_get(&session->stack_map, key);
-            if (!pf2_stack_map_is_end(itr)) {
-                size_t existing_index = itr.data->val;
+            size_t existing_index = 0;
+            if (find_sample_by_ruby_stack(session, &ser_sample, &existing_index)) {
                 session->samples[existing_index].count += 1;
                 if (ser_sample.elapsed_ns > session->samples[existing_index].elapsed_ns) {
                     session->samples[existing_index].elapsed_ns = ser_sample.elapsed_ns;
@@ -291,22 +289,6 @@ drain_ringbuffer(struct pf2_session *session)
             size_t sample_index = session->samples_count++;
             session->samples[sample_index] = ser_sample;
             stored_in_session = true;
-
-            struct pf2_stack_key stored_key = {
-                .ruby_thread_id = session->samples[sample_index].ruby_thread_id,
-                .stack = session->samples[sample_index].stack,
-                .stack_count = session->samples[sample_index].stack_count,
-                .native_stack = session->samples[sample_index].native_stack,
-                .native_stack_count = session->samples[sample_index].native_stack_count,
-                .hash = key.hash,
-            };
-            pf2_stack_map_itr insert_itr = pf2_stack_map_insert(&session->stack_map, stored_key, sample_index);
-            if (pf2_stack_map_is_end(insert_itr)) {
-                ok = false;
-                session->samples_count--;
-                pf2_ser_sample_cleanup(&session->samples[sample_index]);
-                goto sample_done;
-            }
         }
 
 sample_done:
@@ -449,6 +431,35 @@ pf2_ser_sample_cleanup(struct pf2_ser_sample *sample)
     sample->native_stack = NULL;
     sample->stack_count = 0;
     sample->native_stack_count = 0;
+}
+
+
+static bool
+find_sample_by_ruby_stack(
+    struct pf2_session *session,
+    const struct pf2_ser_sample *sample,
+    size_t *out_index
+)
+{
+    for (size_t i = 0; i < session->samples_count; i++) {
+        struct pf2_ser_sample *existing = &session->samples[i];
+        if (existing->ruby_thread_id != sample->ruby_thread_id) {
+            continue;
+        }
+        if (existing->stack_count != sample->stack_count) {
+            continue;
+        }
+        if (existing->stack_count == 0) {
+            *out_index = i;
+            return true;
+        }
+        if (memcmp(existing->stack, sample->stack, existing->stack_count * sizeof(size_t)) == 0) {
+            *out_index = i;
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static bool
@@ -642,7 +653,9 @@ pf2_session_stop(struct pf2_session *session)
 
     // Terminate the collector thread
     session->is_running = false;
-    pthread_join(*session->collector_thread, NULL);
+    if (!NIL_P(session->collector_thread)) {
+        rb_funcall(session->collector_thread, rb_intern("join"), 0);
+    }
     drain_ringbuffer(session);
 }
 
@@ -690,10 +703,7 @@ pf2_session_alloc(VALUE self)
     atomic_store_explicit(&session->is_marking, false, memory_order_relaxed);
 
     // collector_thread
-    session->collector_thread = malloc(sizeof(pthread_t));
-    if (session->collector_thread == NULL) {
-        rb_raise(rb_eNoMemError, "Failed to allocate memory");
-    }
+    session->collector_thread = Qnil;
 
     // samples, samples_count, samples_capacity
     session->samples_count = 0;
@@ -748,6 +758,10 @@ pf2_session_dmark(void *sess)
     // Disallow sample collection during marking
     atomic_store_explicit(&session->is_marking, true, memory_order_release);
 
+    if (!NIL_P(session->collector_thread)) {
+        rb_gc_mark(session->collector_thread);
+    }
+
     // Iterate over all samples in the ringbuffer and mark them
     struct pf2_ringbuffer *rbuf = session->rbuf;
     struct pf2_sample *sample;
@@ -793,7 +807,6 @@ pf2_session_dfree(void *sess)
     pf2_function_map_cleanup(&session->function_map);
     pf2_location_map_cleanup(&session->location_map);
     pf2_stack_map_cleanup(&session->stack_map);
-    free(session->collector_thread);
     free(session);
 }
 
