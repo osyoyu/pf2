@@ -2,10 +2,11 @@
 #define PF2C_SERIALIZER_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include <ruby.h>
 
-#include "session.h"
+struct pf2_session;
 
 struct pf2_ser_sample {
     size_t *stack; // array of location_indexes
@@ -14,6 +15,7 @@ struct pf2_ser_sample {
     size_t native_stack_count;
     uintptr_t ruby_thread_id;
     uint64_t elapsed_ns;
+    uint64_t count;
 };
 
 struct pf2_ser_location {
@@ -40,6 +42,7 @@ struct pf2_ser {
     uint64_t duration_ns;
     uint64_t collected_sample_count;
     uint64_t dropped_sample_count;
+    bool owns_data;
 
     struct pf2_ser_sample *samples;
     size_t samples_count;

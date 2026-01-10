@@ -1,9 +1,11 @@
 #include <pthread.h>
 #include <signal.h>
 #include <stdatomic.h>
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -25,7 +27,27 @@ static struct pf2_session *global_current_session = NULL;
 static void *sample_collector_thread(void *arg);
 static void drain_ringbuffer(struct pf2_session *session);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
-bool ensure_sample_capacity(struct pf2_session *session);
+static bool ensure_samples_capacity(struct pf2_session *session);
+static bool ensure_locations_capacity(struct pf2_session *session);
+static bool ensure_functions_capacity(struct pf2_session *session);
+static void pf2_ser_sample_cleanup(struct pf2_ser_sample *sample);
+static bool function_index_for(struct pf2_session *session, struct pf2_ser_function *function, size_t *out_index);
+static bool location_index_for(
+    struct pf2_session *session,
+    size_t function_index,
+    int32_t lineno,
+    size_t address,
+    size_t *out_index
+);
+static struct pf2_ser_function extract_function_from_ruby_frame(VALUE frame);
+static struct pf2_ser_function extract_function_from_native_pc(uintptr_t pc);
+static void pf2_backtrace_syminfo_callback(
+    void *data,
+    uintptr_t pc,
+    const char *symname,
+    uintptr_t symval,
+    uintptr_t symsize
+);
 static void pf2_session_stop(struct pf2_session *session);
 
 VALUE
@@ -64,6 +86,9 @@ rb_pf2_session_start(VALUE self)
     // Record start time
     clock_gettime(CLOCK_REALTIME, &session->start_time_realtime);
     clock_gettime(CLOCK_MONOTONIC, &session->start_time);
+    session->start_time_ns =
+        (uint64_t)session->start_time.tv_sec * 1000000000ULL +
+        (uint64_t)session->start_time.tv_nsec;
 
     // Spawn a collector thread which periodically wakes up and collects samples
     if (pthread_create(session->collector_thread, NULL, sample_collector_thread, session) != 0) {
@@ -171,16 +196,130 @@ drain_ringbuffer(struct pf2_session *session)
 {
     struct pf2_sample sample;
     while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
-        // Ensure we have capacity before adding a new sample
-        if (!ensure_sample_capacity(session)) {
-            // Failed to expand buffer
-            atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
-            PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
-            break;
+        bool ok = true;
+        bool stored_in_session = false;
+        struct pf2_ser_sample ser_sample = {0};
+        ser_sample.ruby_thread_id = (uintptr_t)sample.context_pthread;
+        ser_sample.elapsed_ns = sample.timestamp_ns - session->start_time_ns;
+        ser_sample.count = 1;
+
+        if (sample.depth > 0) {
+            ser_sample.stack = malloc(sizeof(size_t) * (size_t)sample.depth);
+            if (ser_sample.stack == NULL) {
+                ok = false;
+                goto sample_done;
+            }
+            ser_sample.stack_count = (size_t)sample.depth;
+
+            for (int j = 0; j < sample.depth; j++) {
+                VALUE frame = sample.cmes[j];
+                int32_t lineno = sample.linenos[j];
+
+                struct pf2_ser_function func = extract_function_from_ruby_frame(frame);
+                size_t function_index = 0;
+                if (!function_index_for(session, &func, &function_index)) {
+                    ok = false;
+                    goto sample_done;
+                }
+
+                size_t location_index = 0;
+                if (!location_index_for(session, function_index, lineno, 0, &location_index)) {
+                    ok = false;
+                    goto sample_done;
+                }
+
+                ser_sample.stack[j] = location_index;
+            }
         }
 
-        session->samples[session->samples_index++] = sample;
-        atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
+        if (sample.native_stack_depth > 0) {
+            ser_sample.native_stack = malloc(sizeof(size_t) * sample.native_stack_depth);
+            if (ser_sample.native_stack == NULL) {
+                ok = false;
+                goto sample_done;
+            }
+            ser_sample.native_stack_count = sample.native_stack_depth;
+
+            for (size_t j = 0; j < sample.native_stack_depth; j++) {
+                struct pf2_ser_function func = extract_function_from_native_pc(sample.native_stack[j]);
+                size_t function_index = 0;
+                if (!function_index_for(session, &func, &function_index)) {
+                    ok = false;
+                    goto sample_done;
+                }
+
+                size_t location_index = 0;
+                if (!location_index_for(session, function_index, 0, 0, &location_index)) {
+                    ok = false;
+                    goto sample_done;
+                }
+
+                ser_sample.native_stack[j] = location_index;
+            }
+        }
+
+        {
+            struct pf2_stack_key key;
+            key.ruby_thread_id = ser_sample.ruby_thread_id;
+            key.stack = ser_sample.stack;
+            key.stack_count = ser_sample.stack_count;
+            key.native_stack = ser_sample.native_stack;
+            key.native_stack_count = ser_sample.native_stack_count;
+            key.hash = pf2_stack_hash(
+                ser_sample.stack,
+                ser_sample.stack_count,
+                ser_sample.native_stack,
+                ser_sample.native_stack_count,
+                ser_sample.ruby_thread_id
+            );
+
+            pf2_stack_map_itr itr = pf2_stack_map_get(&session->stack_map, key);
+            if (!pf2_stack_map_is_end(itr)) {
+                size_t existing_index = itr.data->val;
+                session->samples[existing_index].count += 1;
+                if (ser_sample.elapsed_ns > session->samples[existing_index].elapsed_ns) {
+                    session->samples[existing_index].elapsed_ns = ser_sample.elapsed_ns;
+                }
+                goto sample_done;
+            }
+
+            if (!ensure_samples_capacity(session)) {
+                ok = false;
+                goto sample_done;
+            }
+
+            size_t sample_index = session->samples_count++;
+            session->samples[sample_index] = ser_sample;
+            stored_in_session = true;
+
+            struct pf2_stack_key stored_key = {
+                .ruby_thread_id = session->samples[sample_index].ruby_thread_id,
+                .stack = session->samples[sample_index].stack,
+                .stack_count = session->samples[sample_index].stack_count,
+                .native_stack = session->samples[sample_index].native_stack,
+                .native_stack_count = session->samples[sample_index].native_stack_count,
+                .hash = key.hash,
+            };
+            pf2_stack_map_itr insert_itr = pf2_stack_map_insert(&session->stack_map, stored_key, sample_index);
+            if (pf2_stack_map_is_end(insert_itr)) {
+                ok = false;
+                session->samples_count--;
+                pf2_ser_sample_cleanup(&session->samples[sample_index]);
+                goto sample_done;
+            }
+        }
+
+sample_done:
+        if (!ok) {
+            atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
+            PF2_DEBUG_LOG("Dropping sample during indexing\n");
+        } else {
+            atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
+        }
+
+        if (!stored_in_session) {
+            pf2_ser_sample_cleanup(&ser_sample);
+        }
     }
 }
 
@@ -233,19 +372,22 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 
 // Ensures that the session's sample array has capacity for at least one more sample
 // Returns true if successful, false if memory allocation failed
-bool
-ensure_sample_capacity(struct pf2_session *session)
+static bool
+ensure_samples_capacity(struct pf2_session *session)
 {
     // Check if we need to expand
-    if (session->samples_index < session->samples_capacity) {
+    if (session->samples_count < session->samples_capacity) {
         return true;
     }
 
     // Calculate new size (double the current size)
-    size_t new_capacity = session->samples_capacity * 2;
+    size_t new_capacity = session->samples_capacity == 0 ? 16 : session->samples_capacity * 2;
 
     // Reallocate the array
-    struct pf2_sample *new_samples = realloc(session->samples, new_capacity * sizeof(struct pf2_sample));
+    struct pf2_ser_sample *new_samples = realloc(
+        session->samples,
+        new_capacity * sizeof(struct pf2_ser_sample)
+    );
     if (new_samples == NULL) {
         return false;
     }
@@ -254,6 +396,203 @@ ensure_sample_capacity(struct pf2_session *session)
     session->samples_capacity = new_capacity;
 
     return true;
+}
+
+static bool
+ensure_functions_capacity(struct pf2_session *session)
+{
+    if (session->functions_count < session->functions_capacity) {
+        return true;
+    }
+
+    size_t new_capacity = session->functions_capacity == 0 ? 16 : session->functions_capacity * 2;
+    struct pf2_ser_function *new_functions = realloc(
+        session->functions,
+        new_capacity * sizeof(struct pf2_ser_function)
+    );
+    if (new_functions == NULL) {
+        return false;
+    }
+
+    session->functions = new_functions;
+    session->functions_capacity = new_capacity;
+    return true;
+}
+
+static bool
+ensure_locations_capacity(struct pf2_session *session)
+{
+    if (session->locations_count < session->locations_capacity) {
+        return true;
+    }
+
+    size_t new_capacity = session->locations_capacity == 0 ? 16 : session->locations_capacity * 2;
+    struct pf2_ser_location *new_locations = realloc(
+        session->locations,
+        new_capacity * sizeof(struct pf2_ser_location)
+    );
+    if (new_locations == NULL) {
+        return false;
+    }
+
+    session->locations = new_locations;
+    session->locations_capacity = new_capacity;
+    return true;
+}
+
+static void
+pf2_ser_sample_cleanup(struct pf2_ser_sample *sample)
+{
+    free(sample->stack);
+    free(sample->native_stack);
+    sample->stack = NULL;
+    sample->native_stack = NULL;
+    sample->stack_count = 0;
+    sample->native_stack_count = 0;
+}
+
+static bool
+function_index_for(struct pf2_session *session, struct pf2_ser_function *function, size_t *out_index)
+{
+    struct pf2_function_key key = pf2_function_key_build(function);
+    pf2_function_map_itr itr = pf2_function_map_get(&session->function_map, key);
+    if (!pf2_function_map_is_end(itr)) {
+        free(function->name);
+        free(function->filename);
+        *out_index = itr.data->val;
+        return true;
+    }
+
+    if (!ensure_functions_capacity(session)) {
+        free(function->name);
+        free(function->filename);
+        return false;
+    }
+
+    size_t new_index = session->functions_count++;
+    session->functions[new_index] = *function;
+
+    struct pf2_function_key stored_key = pf2_function_key_build(&session->functions[new_index]);
+    pf2_function_map_itr insert_itr = pf2_function_map_insert(&session->function_map, stored_key, new_index);
+    if (pf2_function_map_is_end(insert_itr)) {
+        session->functions_count--;
+        free(function->name);
+        free(function->filename);
+        return false;
+    }
+
+    *out_index = new_index;
+    return true;
+}
+
+static bool
+location_index_for(
+    struct pf2_session *session,
+    size_t function_index,
+    int32_t lineno,
+    size_t address,
+    size_t *out_index
+)
+{
+    struct pf2_location_key key = {
+        .function_index = function_index,
+        .lineno = lineno,
+        .address = address,
+    };
+    pf2_location_map_itr itr = pf2_location_map_get(&session->location_map, key);
+    if (!pf2_location_map_is_end(itr)) {
+        *out_index = itr.data->val;
+        return true;
+    }
+
+    if (!ensure_locations_capacity(session)) {
+        return false;
+    }
+
+    size_t new_index = session->locations_count++;
+    session->locations[new_index].function_index = function_index;
+    session->locations[new_index].lineno = lineno;
+    session->locations[new_index].address = address;
+
+    pf2_location_map_itr insert_itr = pf2_location_map_insert(&session->location_map, key, new_index);
+    if (pf2_location_map_is_end(insert_itr)) {
+        session->locations_count--;
+        return false;
+    }
+
+    *out_index = new_index;
+    return true;
+}
+
+static struct pf2_ser_function
+extract_function_from_ruby_frame(VALUE frame)
+{
+    struct pf2_ser_function func;
+
+    VALUE frame_full_label = rb_profile_frame_full_label(frame);
+    if (RTEST(frame_full_label)) {
+        const char *label = StringValueCStr(frame_full_label);
+        func.name = strdup(label);
+    } else {
+        func.name = NULL;
+    }
+
+    VALUE frame_path = rb_profile_frame_path(frame);
+    if (RTEST(frame_path)) {
+        const char *path = StringValueCStr(frame_path);
+        func.filename = strdup(path);
+    } else {
+        func.filename = NULL;
+    }
+
+    VALUE frame_first_lineno = rb_profile_frame_first_lineno(frame);
+    if (RTEST(frame_first_lineno)) {
+        func.start_lineno = NUM2INT(frame_first_lineno);
+    } else {
+        func.start_lineno = -1;
+    }
+
+    func.implementation = IMPLEMENTATION_RUBY;
+    func.start_address = 0;
+
+    return func;
+}
+
+static struct pf2_ser_function
+extract_function_from_native_pc(uintptr_t pc)
+{
+    struct pf2_ser_function func;
+    func.implementation = IMPLEMENTATION_NATIVE;
+
+    func.start_address = 0;
+    func.name = NULL;
+    func.filename = NULL;
+    func.start_lineno = 0;
+
+    struct backtrace_state *state = global_backtrace_state;
+    assert(state != NULL);
+    backtrace_syminfo(state, pc, pf2_backtrace_syminfo_callback, pf2_backtrace_print_error, &func);
+
+    return func;
+}
+
+static void
+pf2_backtrace_syminfo_callback(
+    void *data,
+    uintptr_t pc,
+    const char *symname,
+    uintptr_t symval,
+    uintptr_t symsize
+)
+{
+    struct pf2_ser_function *func = (struct pf2_ser_function *)data;
+
+    if (symname != NULL) {
+        func->name = strdup(symname);
+    }
+    func->start_address = symval;
+    (void)pc;
+    (void)symsize;
 }
 
 VALUE
@@ -356,21 +695,41 @@ pf2_session_alloc(VALUE self)
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
-    // samples, samples_index, samples_capacity
-    session->samples_index = 0;
-    session->samples_capacity = 500; // 10 seconds worth of samples at 50 Hz
-    session->samples = malloc(sizeof(struct pf2_sample) * session->samples_capacity);
+    // samples, samples_count, samples_capacity
+    session->samples_count = 0;
+    session->samples_capacity = 256;
+    session->samples = malloc(sizeof(struct pf2_ser_sample) * session->samples_capacity);
     if (session->samples == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
+
+    // functions, locations
+    session->functions_count = 0;
+    session->functions_capacity = 128;
+    session->functions = malloc(sizeof(struct pf2_ser_function) * session->functions_capacity);
+    if (session->functions == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
+
+    session->locations_count = 0;
+    session->locations_capacity = 256;
+    session->locations = malloc(sizeof(struct pf2_ser_location) * session->locations_capacity);
+    if (session->locations == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
+
+    pf2_function_map_init(&session->function_map);
+    pf2_location_map_init(&session->location_map);
+    pf2_stack_map_init(&session->stack_map);
 
     // collected_sample_count, dropped_sample_count
     atomic_store_explicit(&session->collected_sample_count, 0, memory_order_relaxed);
     atomic_store_explicit(&session->dropped_sample_count, 0, memory_order_relaxed);
 
-    // start_time_realtime, start_time
+    // start_time_realtime, start_time, start_time_ns
     session->start_time_realtime = (struct timespec){0};
     session->start_time = (struct timespec){0};
+    session->start_time_ns = 0;
 
     // duration_ns
     session->duration_ns = 0;
@@ -403,14 +762,6 @@ pf2_session_dmark(void *sess)
         head = (head + 1) % rbuf->size;
     }
 
-    // Iterate over all samples in the samples array and mark them
-    for (size_t i = 0; i < session->samples_index; i++) {
-        sample = &session->samples[i];
-        for (int i = 0; i < sample->depth; i++) {
-            rb_gc_mark(sample->cmes[i]);
-        }
-    }
-
     // Allow sample collection
     atomic_store_explicit(&session->is_marking, false, memory_order_release);
 }
@@ -429,7 +780,19 @@ pf2_session_dfree(void *sess)
 
     pf2_configuration_free(session->configuration);
     pf2_ringbuffer_free(session->rbuf);
+    for (size_t i = 0; i < session->samples_count; i++) {
+        pf2_ser_sample_cleanup(&session->samples[i]);
+    }
     free(session->samples);
+    for (size_t i = 0; i < session->functions_count; i++) {
+        free(session->functions[i].name);
+        free(session->functions[i].filename);
+    }
+    free(session->functions);
+    free(session->locations);
+    pf2_function_map_cleanup(&session->function_map);
+    pf2_location_map_cleanup(&session->location_map);
+    pf2_stack_map_cleanup(&session->stack_map);
     free(session->collector_thread);
     free(session);
 }
@@ -440,7 +803,9 @@ pf2_session_dsize(const void *sess)
     const struct pf2_session *session = sess;
     return (
         sizeof(struct pf2_session)
-        + sizeof(struct pf2_sample) * session->samples_capacity
+        + sizeof(struct pf2_ser_sample) * session->samples_capacity
+        + sizeof(struct pf2_ser_function) * session->functions_capacity
+        + sizeof(struct pf2_ser_location) * session->locations_capacity
         + sizeof(struct pf2_sample) * session->rbuf->size
     );
 }

@@ -8,8 +8,10 @@
 #include <ruby.h>
 
 #include "configuration.h"
+#include "indexed_maps.h"
 #include "ringbuffer.h"
 #include "sample.h"
+#include "serializer.h"
 
 struct pf2_session {
     bool is_running;
@@ -22,12 +24,25 @@ struct pf2_session {
     atomic_bool is_marking; // Whether garbage collection is in progress
     pthread_t *collector_thread;
 
-    struct pf2_sample *samples; // Dynamic array of samples
-    size_t samples_index;
+    struct pf2_ser_sample *samples; // Dynamic array of indexed samples
+    size_t samples_count;
     size_t samples_capacity;    // Current capacity of the samples array
+
+    struct pf2_ser_function *functions;
+    size_t functions_count;
+    size_t functions_capacity;
+
+    struct pf2_ser_location *locations;
+    size_t locations_count;
+    size_t locations_capacity;
+
+    pf2_function_map function_map;
+    pf2_location_map location_map;
+    pf2_stack_map stack_map;
 
     struct timespec start_time_realtime;
     struct timespec start_time; // When profiling started
+    uint64_t start_time_ns;
     uint64_t duration_ns; // Duration of profiling in nanoseconds
 
     atomic_uint_fast64_t collected_sample_count; // Number of samples copied out of the ringbuffer
