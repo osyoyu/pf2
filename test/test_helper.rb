@@ -4,9 +4,8 @@ def sample_now
   Process.kill("SIGPROF", Process.pid)
 end
 
-
-def system_with_timeout(command, timeout)
-  pid = spawn(command, pgroup: true)
+def system_with_timeout(command, timeout, env: {})
+  pid = spawn(env, command, pgroup: true)
   pgid = Process.getpgid(pid)
   wait_thread = Process.detach(pid)
   if wait_thread.nil?
