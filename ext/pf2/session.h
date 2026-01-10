@@ -40,6 +40,17 @@ struct pf2_session {
     pf2_location_map location_map;
     pf2_stack_map stack_map;
 
+    struct pf2_ser_function *native_functions;
+    size_t native_functions_count;
+    size_t native_functions_capacity;
+
+    struct pf2_ser_location *native_locations;
+    size_t native_locations_count;
+    size_t native_locations_capacity;
+
+    pf2_function_map native_function_map;
+    pf2_location_map native_location_map;
+
     struct timespec start_time_realtime;
     struct timespec start_time; // When profiling started
     uint64_t start_time_ns;

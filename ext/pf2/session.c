@@ -32,9 +32,19 @@ static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 static bool ensure_samples_capacity(struct pf2_session *session);
 static bool ensure_locations_capacity(struct pf2_session *session);
 static bool ensure_functions_capacity(struct pf2_session *session);
+static bool ensure_native_locations_capacity(struct pf2_session *session);
+static bool ensure_native_functions_capacity(struct pf2_session *session);
 static void pf2_ser_sample_cleanup(struct pf2_ser_sample *sample);
 static bool function_index_for(struct pf2_session *session, struct pf2_ser_function *function, size_t *out_index);
+static bool native_function_index_for(struct pf2_session *session, struct pf2_ser_function *function, size_t *out_index);
 static bool location_index_for(
+    struct pf2_session *session,
+    size_t function_index,
+    int32_t lineno,
+    size_t address,
+    size_t *out_index
+);
+static bool native_location_index_for(
     struct pf2_session *session,
     size_t function_index,
     int32_t lineno,
@@ -255,6 +265,45 @@ drain_ringbuffer(struct pf2_session *session)
 
             for (size_t j = 0; j < sample.native_stack_depth; j++) {
                 struct pf2_ser_function func = extract_function_from_native_pc(sample.native_stack[j]);
+                struct pf2_ser_function native_func = func;
+                if (func.name != NULL) {
+                    native_func.name = strdup(func.name);
+                    if (native_func.name == NULL) {
+                        ok = false;
+                        free(func.name);
+                        free(func.filename);
+                        goto sample_done;
+                    }
+                }
+                if (func.filename != NULL) {
+                    native_func.filename = strdup(func.filename);
+                    if (native_func.filename == NULL) {
+                        ok = false;
+                        free(native_func.name);
+                        free(func.name);
+                        free(func.filename);
+                        goto sample_done;
+                    }
+                }
+
+                size_t native_function_index = 0;
+                if (!native_function_index_for(session, &native_func, &native_function_index)) {
+                    ok = false;
+                    free(native_func.name);
+                    free(native_func.filename);
+                    free(func.name);
+                    free(func.filename);
+                    goto sample_done;
+                }
+
+                size_t native_location_index = 0;
+                if (!native_location_index_for(session, native_function_index, 0, 0, &native_location_index)) {
+                    ok = false;
+                    free(func.name);
+                    free(func.filename);
+                    goto sample_done;
+                }
+
                 size_t function_index = 0;
                 if (!function_index_for(session, &func, &function_index)) {
                     ok = false;
@@ -402,6 +451,27 @@ ensure_functions_capacity(struct pf2_session *session)
 }
 
 static bool
+ensure_native_functions_capacity(struct pf2_session *session)
+{
+    if (session->native_functions_count < session->native_functions_capacity) {
+        return true;
+    }
+
+    size_t new_capacity = session->native_functions_capacity == 0 ? 16 : session->native_functions_capacity * 2;
+    struct pf2_ser_function *new_functions = realloc(
+        session->native_functions,
+        new_capacity * sizeof(struct pf2_ser_function)
+    );
+    if (new_functions == NULL) {
+        return false;
+    }
+
+    session->native_functions = new_functions;
+    session->native_functions_capacity = new_capacity;
+    return true;
+}
+
+static bool
 ensure_locations_capacity(struct pf2_session *session)
 {
     if (session->locations_count < session->locations_capacity) {
@@ -419,6 +489,27 @@ ensure_locations_capacity(struct pf2_session *session)
 
     session->locations = new_locations;
     session->locations_capacity = new_capacity;
+    return true;
+}
+
+static bool
+ensure_native_locations_capacity(struct pf2_session *session)
+{
+    if (session->native_locations_count < session->native_locations_capacity) {
+        return true;
+    }
+
+    size_t new_capacity = session->native_locations_capacity == 0 ? 16 : session->native_locations_capacity * 2;
+    struct pf2_ser_location *new_locations = realloc(
+        session->native_locations,
+        new_capacity * sizeof(struct pf2_ser_location)
+    );
+    if (new_locations == NULL) {
+        return false;
+    }
+
+    session->native_locations = new_locations;
+    session->native_locations_capacity = new_capacity;
     return true;
 }
 
@@ -497,6 +588,40 @@ function_index_for(struct pf2_session *session, struct pf2_ser_function *functio
 }
 
 static bool
+native_function_index_for(struct pf2_session *session, struct pf2_ser_function *function, size_t *out_index)
+{
+    struct pf2_function_key key = pf2_function_key_build(function);
+    pf2_function_map_itr itr = pf2_function_map_get(&session->native_function_map, key);
+    if (!pf2_function_map_is_end(itr)) {
+        free(function->name);
+        free(function->filename);
+        *out_index = itr.data->val;
+        return true;
+    }
+
+    if (!ensure_native_functions_capacity(session)) {
+        free(function->name);
+        free(function->filename);
+        return false;
+    }
+
+    size_t new_index = session->native_functions_count++;
+    session->native_functions[new_index] = *function;
+
+    struct pf2_function_key stored_key = pf2_function_key_build(&session->native_functions[new_index]);
+    pf2_function_map_itr insert_itr = pf2_function_map_insert(&session->native_function_map, stored_key, new_index);
+    if (pf2_function_map_is_end(insert_itr)) {
+        session->native_functions_count--;
+        free(function->name);
+        free(function->filename);
+        return false;
+    }
+
+    *out_index = new_index;
+    return true;
+}
+
+static bool
 location_index_for(
     struct pf2_session *session,
     size_t function_index,
@@ -535,6 +660,44 @@ location_index_for(
     return true;
 }
 
+static bool
+native_location_index_for(
+    struct pf2_session *session,
+    size_t function_index,
+    int32_t lineno,
+    size_t address,
+    size_t *out_index
+)
+{
+    struct pf2_location_key key = {
+        .function_index = function_index,
+        .lineno = lineno,
+        .address = address,
+    };
+    pf2_location_map_itr itr = pf2_location_map_get(&session->native_location_map, key);
+    if (!pf2_location_map_is_end(itr)) {
+        *out_index = itr.data->val;
+        return true;
+    }
+
+    if (!ensure_native_locations_capacity(session)) {
+        return false;
+    }
+
+    size_t new_index = session->native_locations_count++;
+    session->native_locations[new_index].function_index = function_index;
+    session->native_locations[new_index].lineno = lineno;
+    session->native_locations[new_index].address = address;
+
+    pf2_location_map_itr insert_itr = pf2_location_map_insert(&session->native_location_map, key, new_index);
+    if (pf2_location_map_is_end(insert_itr)) {
+        session->native_locations_count--;
+        return false;
+    }
+
+    *out_index = new_index;
+    return true;
+}
 static struct pf2_ser_function
 extract_function_from_ruby_frame(VALUE frame)
 {
@@ -732,6 +895,23 @@ pf2_session_alloc(VALUE self)
     pf2_location_map_init(&session->location_map);
     pf2_stack_map_init(&session->stack_map);
 
+    session->native_functions_count = 0;
+    session->native_functions_capacity = 128;
+    session->native_functions = malloc(sizeof(struct pf2_ser_function) * session->native_functions_capacity);
+    if (session->native_functions == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
+
+    session->native_locations_count = 0;
+    session->native_locations_capacity = 256;
+    session->native_locations = malloc(sizeof(struct pf2_ser_location) * session->native_locations_capacity);
+    if (session->native_locations == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate memory");
+    }
+
+    pf2_function_map_init(&session->native_function_map);
+    pf2_location_map_init(&session->native_location_map);
+
     // collected_sample_count, dropped_sample_count
     atomic_store_explicit(&session->collected_sample_count, 0, memory_order_relaxed);
     atomic_store_explicit(&session->dropped_sample_count, 0, memory_order_relaxed);
@@ -807,6 +987,14 @@ pf2_session_dfree(void *sess)
     pf2_function_map_cleanup(&session->function_map);
     pf2_location_map_cleanup(&session->location_map);
     pf2_stack_map_cleanup(&session->stack_map);
+    for (size_t i = 0; i < session->native_functions_count; i++) {
+        free(session->native_functions[i].name);
+        free(session->native_functions[i].filename);
+    }
+    free(session->native_functions);
+    free(session->native_locations);
+    pf2_function_map_cleanup(&session->native_function_map);
+    pf2_location_map_cleanup(&session->native_location_map);
     free(session);
 }
 
@@ -819,6 +1007,8 @@ pf2_session_dsize(const void *sess)
         + sizeof(struct pf2_ser_sample) * session->samples_capacity
         + sizeof(struct pf2_ser_function) * session->functions_capacity
         + sizeof(struct pf2_ser_location) * session->locations_capacity
+        + sizeof(struct pf2_ser_function) * session->native_functions_capacity
+        + sizeof(struct pf2_ser_location) * session->native_locations_capacity
         + sizeof(struct pf2_sample) * session->rbuf->size
     );
 }
