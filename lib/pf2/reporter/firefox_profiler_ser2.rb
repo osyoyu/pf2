@@ -131,8 +131,8 @@ module Pf2
             stack: [],
             time: [],
             duration: [],
-            # weight: nil,
-            # weight_type: 'samples',
+            weight: [],
+            weight_type: 'samples',
           }
 
           @samples.each do |sample|
@@ -142,9 +142,10 @@ module Pf2
             stack_id = @stack_tree.dig(*woven_stack, :stack_id)
 
             ret[:stack] << stack_id
-            ret[:time] << sample[:elapsed_ns] / 1_000_000 # ns -> ms
+            ret[:time] << (sample[:elapsed_ns] || 0) / 1_000_000 # ns -> ms
             ret[:duration] << 100
             ret[:event_delay] << 0
+            ret[:weight] << (sample[:count] || 1)
           end
 
           ret[:length] = ret[:stack].length

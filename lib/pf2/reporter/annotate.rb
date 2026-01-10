@@ -62,15 +62,16 @@ module Pf2
         # Iterate over all samples and tally self hits and total hits by location
         hits_per_location = {}
         @profile[:samples].each do |sample|
+          weight = sample[:count] || 1
           # Record a total hit for all locations in the stack
           sample[:stack].each do |location_id|
             hits_per_location[location_id] ||= HitCount.new(0, 0)
-            hits_per_location[location_id].total += 1
+            hits_per_location[location_id].total += weight
           end
 
           # Record a self hit for the topmost stack frame, which is the first element in the array
           topmost_location_id = sample[:stack][0]
-          hits_per_location[topmost_location_id].self += 1
+          hits_per_location[topmost_location_id].self += weight
         end
 
         # Associate a filename and lineno for each location
