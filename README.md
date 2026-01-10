@@ -167,3 +167,4 @@ License
 --------
 
 The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
+See [LICENSE.txt](/LICENSE.txt) and [THIRD_PARTY_LICENSES.txt](/THIRD_PARTY_LICENSES.txt) for details.
