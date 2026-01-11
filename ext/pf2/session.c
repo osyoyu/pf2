@@ -145,6 +145,9 @@ rb_pf2_session_start(VALUE self)
             &sev,
             &session->timer
         ) == -1) {
+            session->is_running = false;
+            rb_funcall(session->collector_thread, rb_intern("join"), 0);
+            global_current_session = NULL;
             rb_raise(rb_eRuntimeError, "Failed to create timer");
         }
         struct itimerspec its = {
@@ -158,6 +161,10 @@ rb_pf2_session_start(VALUE self)
             },
         };
         if (timer_settime(session->timer, 0, &its, NULL) == -1) {
+            timer_delete(session->timer);
+            session->is_running = false;
+            rb_funcall(session->collector_thread, rb_intern("join"), 0);
+            global_current_session = NULL;
             rb_raise(rb_eRuntimeError, "Failed to start timer");
         }
 #else
@@ -180,6 +187,9 @@ rb_pf2_session_start(VALUE self)
             : ITIMER_REAL; // Wall time (sends SIGALRM)
 
         if (setitimer(which_timer, &itv, NULL) == -1) {
+            session->is_running = false;
+            rb_funcall(session->collector_thread, rb_intern("join"), 0);
+            global_current_session = NULL;
             rb_raise(rb_eRuntimeError, "Failed to start timer");
         }
 #endif
@@ -193,11 +203,12 @@ sample_collector_thread(void *arg)
 {
     struct pf2_session *session = (struct pf2_session *)arg;
 
+    // TODO: is_running is written from another thread; consider atomic access.
     while (session->is_running == true) {
         // Take samples from the ring buffer
         drain_ringbuffer(session);
 
-        // Sleep for 100 ms
+        // Sleep for 10 ms
         // TODO: Replace with high watermark callback
         struct timespec ts = { .tv_sec = 0, .tv_nsec = 10 * 1000000, }; // 10 ms
         rb_thread_call_without_gvl(pf2_sleep_no_gvl, &ts, RUBY_UBF_IO, NULL);
@@ -364,6 +375,9 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 #endif
 
     struct pf2_session *session = global_current_session;
+    if (session == NULL) {
+        return;
+    }
 
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
@@ -532,6 +546,8 @@ find_sample_by_ruby_stack(
     size_t *out_index
 )
 {
+    // Samples are deduped by Ruby stack only; native stacks are normalized
+    // separately via native function/location maps and remain per-sample data.
     for (size_t i = 0; i < session->samples_count; i++) {
         struct pf2_ser_sample *existing = &session->samples[i];
         if (existing->ruby_thread_id != sample->ruby_thread_id) {
@@ -803,6 +819,7 @@ pf2_session_stop(struct pf2_session *session)
             rb_raise(rb_eRuntimeError, "Failed to delete timer");
         }
     }
+    global_current_session = NULL;
 #else
     struct itimerval zero_timer = {{0, 0}, {0, 0}};
     int which_timer = session->configuration->time_mode == PF2_TIME_MODE_CPU_TIME
