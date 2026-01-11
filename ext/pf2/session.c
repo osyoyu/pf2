@@ -157,7 +157,7 @@ sample_collector_thread(void *arg)
         // Take samples from the ring buffer
         drain_ringbuffer(session);
 
-        // Sleep for 100 ms
+        // Sleep for 10 ms
         // TODO: Replace with high watermark callback
         struct timespec ts = { .tv_sec = 0, .tv_nsec = 10 * 1000000, }; // 10 ms
         nanosleep(&ts, NULL);
