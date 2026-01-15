@@ -5,10 +5,20 @@ require 'optparse'
 
 gem_root = File.expand_path(File.join(File.dirname(__FILE__), '..', '..'))
 
-options = {}
+options = {
+  debug: ENV['PF2_DEBUG'] == '1',
+}
 option_parser = OptionParser.new do |opts|
-  opts.on('--debug', 'Compile Pf2 in debug mode') do |debug|
-    options[:debug] = true
+  opts.on('--debug[=BOOL]') do |debug|
+    options[:debug] =
+      case debug
+      when nil, "true"
+        true
+      when "false"
+        false
+      else
+        raise OptionParser::InvalidArgument, "Expected true or false for --debug"
+      end
   end
 end
 option_parser.parse!(ARGV)
