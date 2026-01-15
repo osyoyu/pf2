@@ -1,8 +1,27 @@
 require 'mkmf'
 require 'mini_portile2'
 require 'fileutils'
+require 'optparse'
 
 gem_root = File.expand_path(File.join(File.dirname(__FILE__), '..', '..'))
+
+options = {
+  debug: ENV['PF2_DEBUG'] == '1',
+}
+option_parser = OptionParser.new do |opts|
+  opts.on('--debug[=BOOL]') do |debug|
+    options[:debug] =
+      case debug
+      when nil, "true"
+        true
+      when "false"
+        false
+      else
+        raise OptionParser::InvalidArgument, "Expected true or false for --debug"
+      end
+  end
+end
+option_parser.parse!(ARGV)
 
 libbacktrace = MiniPortile.new('libbacktrace', '1.0.0')
 libbacktrace.source_directory = File.join(gem_root, 'vendor', 'libbacktrace')
@@ -28,7 +47,7 @@ end
 
 append_ldflags('-lrt') # for timer_create
 append_cflags('-fvisibility=hidden')
-append_cflags('-DPF2_DEBUG') if ENV['PF2_DEBUG'] == '1'
+append_cflags('-DPF2_DEBUG') if options[:debug]
 
 # Check for timer functions
 have_timer_create = have_func('timer_create')
