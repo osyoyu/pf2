@@ -31,7 +31,7 @@ module Pf2
     @@session = nil # let GC clean up the session
     result
   ensure
-    if @@session != nil
+    if defined?(@@session) && @@session != nil
       stop
       @@session = nil
     end
