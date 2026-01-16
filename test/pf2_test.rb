@@ -39,4 +39,16 @@ class Pf2Test < Minitest::Test
   def test_profile_raises_error_when_called_without_block
     assert_raises(ArgumentError, "block required") { Pf2.profile }
   end
+
+  def test_profile_stops_session_even_if_given_block_raises
+    begin
+      Pf2.profile do
+        raise
+      end
+    rescue
+      # nice catch, do nothing
+    end
+
+    assert_nil Pf2.class_variable_get(:@@session)
+  end
 end
