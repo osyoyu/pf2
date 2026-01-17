@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -25,8 +26,10 @@ static struct pf2_session *global_current_session = NULL;
 static void *sample_collector_thread(void *arg);
 static void drain_ringbuffer(struct pf2_session *session);
 static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
-bool ensure_sample_capacity(struct pf2_session *session);
 static void pf2_session_stop(struct pf2_session *session);
+static size_t intern_location(struct pf2_session *session, VALUE cme, int lineno);
+static size_t intern_stack(struct pf2_session *session, const size_t *frames, size_t depth);
+static bool insert_sample(struct pf2_session *session, const struct pf2_sample *sample);
 
 VALUE
 rb_pf2_session_initialize(int argc, VALUE *argv, VALUE self)
@@ -171,16 +174,12 @@ drain_ringbuffer(struct pf2_session *session)
 {
     struct pf2_sample sample;
     while (pf2_ringbuffer_pop(session->rbuf, &sample) == true) {
-        // Ensure we have capacity before adding a new sample
-        if (!ensure_sample_capacity(session)) {
-            // Failed to expand buffer
+        if (!insert_sample(session, &sample)) {
             atomic_fetch_add_explicit(&session->dropped_sample_count, 1, memory_order_relaxed);
-            PF2_DEBUG_LOG("Failed to expand sample buffer. Dropping sample\n");
-            break;
+            PF2_DEBUG_LOG("Failed to record sample. Dropping sample\n");
+        } else {
+            atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
         }
-
-        session->samples[session->samples_index++] = sample;
-        atomic_fetch_add_explicit(&session->collected_sample_count, 1, memory_order_relaxed);
     }
 }
 
@@ -231,27 +230,75 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 #endif
 }
 
-// Ensures that the session's sample array has capacity for at least one more sample
-// Returns true if successful, false if memory allocation failed
-bool
-ensure_sample_capacity(struct pf2_session *session)
+static size_t
+intern_location(struct pf2_session *session, VALUE cme, int lineno)
 {
-    // Check if we need to expand
-    if (session->samples_index < session->samples_capacity) {
-        return true;
+    struct pf2_location_key key = { .cme = cme, .lineno = lineno };
+    int absent;
+    khint_t k = pf2_location_table_put(session->location_table, key, &absent);
+    if (absent) {
+        kh_val(session->location_table, k) = kh_size(session->location_table) - 1;
+    }
+    return kh_val(session->location_table, k);
+}
+
+static size_t
+intern_stack(struct pf2_session *session, const size_t *frames, size_t depth)
+{
+    struct pf2_stack_key skey = { .frames = frames, .depth = depth };
+    int absent;
+    khint_t k = pf2_stack_table_put(session->stack_table, skey, &absent);
+    if (absent) {
+        size_t *copy = NULL;
+        if (depth > 0) {
+            copy = malloc(sizeof(size_t) * depth);
+            if (copy == NULL) return (size_t)-1;
+            memcpy(copy, frames, sizeof(size_t) * depth);
+        }
+        kh_key(session->stack_table, k).frames = copy;
+        kh_key(session->stack_table, k).depth = depth;
+        kh_val(session->stack_table, k) = kh_size(session->stack_table) - 1;
+    }
+    return kh_val(session->stack_table, k);
+}
+
+static bool
+insert_sample(struct pf2_session *session, const struct pf2_sample *sample)
+{
+    size_t frame_ids[PF2_SAMPLE_MAX_RUBY_DEPTH];
+
+    // Convert each frame to a location
+    for (int i = 0; i < sample->depth; i++) {
+        frame_ids[i] = intern_location(session, sample->cmes[i], sample->linenos[i]);
     }
 
-    // Calculate new size (double the current size)
-    size_t new_capacity = session->samples_capacity * 2;
+    // Obtain stack_id for the array of locations
+    size_t stack_id = intern_stack(session, frame_ids, (size_t)sample->depth);
+    if (stack_id == (size_t)-1) { return false; }
 
-    // Reallocate the array
-    struct pf2_sample *new_samples = realloc(session->samples, new_capacity * sizeof(struct pf2_sample));
-    if (new_samples == NULL) {
-        return false;
+    // Increment the observation count for this stack_id
+    int absent;
+    khint_t k = pf2_sample_table_put(session->sample_table, stack_id, &absent);
+    struct pf2_sample_stats *stats = &kh_val(session->sample_table, k);
+    if (absent) {
+        // This is the first time this stack was observed. Initialize stats.
+        stats->count = 0;
+        stats->timestamps = NULL;
+        stats->timestamps_count = 0;
+        stats->timestamps_capacity = 0;
     }
 
-    session->samples = new_samples;
-    session->samples_capacity = new_capacity;
+    // count
+    stats->count += 1;
+    // timestamps
+    if (stats->timestamps_count == stats->timestamps_capacity) {
+        size_t new_cap = stats->timestamps_capacity ? stats->timestamps_capacity * 2 : 16;
+        uint64_t *new_ts = realloc(stats->timestamps, sizeof(uint64_t) * new_cap);
+        if (new_ts == NULL) { return false; }
+        stats->timestamps = new_ts;
+        stats->timestamps_capacity = new_cap;
+    }
+    stats->timestamps[stats->timestamps_count++] = sample->timestamp_ns;
 
     return true;
 }
@@ -364,6 +411,20 @@ pf2_session_alloc(VALUE self)
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
+    // location_table, stack_table, sample_table
+    session->location_table = pf2_location_table_init();
+    if (session->location_table == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate location table");
+    }
+    session->stack_table = pf2_stack_table_init();
+    if (session->stack_table == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate stack table");
+    }
+    session->sample_table = pf2_sample_table_init();
+    if (session->sample_table == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate stack sample table");
+    }
+
     // collected_sample_count, dropped_sample_count
     atomic_store_explicit(&session->collected_sample_count, 0, memory_order_relaxed);
     atomic_store_explicit(&session->dropped_sample_count, 0, memory_order_relaxed);
@@ -411,6 +472,14 @@ pf2_session_dmark(void *sess)
         }
     }
 
+    // Mark Ruby VALUEs stored in location_table keys
+    if (session->location_table) {
+        khint_t k;
+        kh_foreach(session->location_table, k) {
+            rb_gc_mark(kh_key(session->location_table, k).cme);
+        }
+    }
+
     // Allow sample collection
     atomic_store_explicit(&session->is_marking, false, memory_order_release);
 }
@@ -430,6 +499,25 @@ pf2_session_dfree(void *sess)
     pf2_configuration_free(session->configuration);
     pf2_ringbuffer_free(session->rbuf);
     free(session->samples);
+
+    if (session->sample_table) {
+        khint_t k;
+        kh_foreach(session->sample_table, k) {
+            free(kh_val(session->sample_table, k).timestamps);
+        }
+        pf2_sample_table_destroy(session->sample_table);
+    }
+    if (session->stack_table) {
+        khint_t k;
+        kh_foreach(session->stack_table, k) {
+            free((void *)kh_key(session->stack_table, k).frames);
+        }
+        pf2_stack_table_destroy(session->stack_table);
+    }
+    if (session->location_table) {
+        pf2_location_table_destroy(session->location_table);
+    }
+
     free(session->collector_thread);
     free(session);
 }
