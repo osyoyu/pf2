@@ -237,6 +237,7 @@ intern_location(struct pf2_session *session, VALUE cme, int lineno)
     struct pf2_location_key key = { .cme = cme, .lineno = lineno };
     int absent;
     khint_t k = pf2_location_table_put(session->location_table, key, &absent);
+    if (k == kh_end(session->location_table)) { return (size_t)-1; }
     if (absent) {
         kh_val(session->location_table, k) = kh_size(session->location_table) - 1;
     }
@@ -249,6 +250,7 @@ intern_stack(struct pf2_session *session, const size_t *frames, size_t depth)
     struct pf2_stack_key skey = { .frames = frames, .depth = depth };
     int absent;
     khint_t k = pf2_stack_table_put(session->stack_table, skey, &absent);
+    if (k == kh_end(session->stack_table)) { return (size_t)-1; }
     if (absent) {
         size_t *copy = NULL;
         if (depth > 0) {
@@ -270,6 +272,7 @@ intern_native_stack(struct pf2_session *session, const uintptr_t *frames, size_t
     struct pf2_native_stack_key skey = { .frames = frames, .depth = depth };
     int absent;
     khint_t k = pf2_native_stack_table_put(session->native_stack_table, skey, &absent);
+    if (k == kh_end(session->native_stack_table)) { return (size_t)-1; }
     if (absent) {
         uintptr_t *copy = NULL;
         if (depth > 0) {
@@ -292,6 +295,7 @@ insert_sample(struct pf2_session *session, const struct pf2_sample *sample)
     // Convert each frame to a location
     for (int i = 0; i < sample->depth; i++) {
         frame_ids[i] = intern_location(session, sample->cmes[i], sample->linenos[i]);
+        if (frame_ids[i] == (size_t)-1) { return false; }
     }
 
     // Obtain stack_id for the array of locations
@@ -308,6 +312,7 @@ insert_sample(struct pf2_session *session, const struct pf2_sample *sample)
         .native_stack_id = native_stack_id
     };
     khint_t k = pf2_sample_table_put(session->sample_table, ckey, &absent);
+    if (k == kh_end(session->sample_table)) { return false; }
     struct pf2_sample_stats *stats = &kh_val(session->sample_table, k);
     if (absent) {
         // This is the first time this stack was observed. Initialize stats.
