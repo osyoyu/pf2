@@ -313,6 +313,7 @@ insert_sample(struct pf2_session *session, const struct pf2_sample *sample)
         // This is the first time this stack was observed. Initialize stats.
         stats->count = 0;
         stats->timestamps = NULL;
+        stats->thread_ids = NULL;
         stats->timestamps_count = 0;
         stats->timestamps_capacity = 0;
     }
@@ -323,11 +324,19 @@ insert_sample(struct pf2_session *session, const struct pf2_sample *sample)
     if (stats->timestamps_count == stats->timestamps_capacity) {
         size_t new_cap = stats->timestamps_capacity ? stats->timestamps_capacity * 2 : 16;
         uint64_t *new_ts = realloc(stats->timestamps, sizeof(uint64_t) * new_cap);
-        if (new_ts == NULL) { return false; }
+        uintptr_t *new_threads = realloc(stats->thread_ids, sizeof(uintptr_t) * new_cap);
+        if (new_ts == NULL || new_threads == NULL) {
+            free(new_ts);
+            free(new_threads);
+            return false;
+        }
         stats->timestamps = new_ts;
+        stats->thread_ids = new_threads;
         stats->timestamps_capacity = new_cap;
     }
-    stats->timestamps[stats->timestamps_count++] = sample->timestamp_ns;
+    stats->timestamps[stats->timestamps_count] = sample->timestamp_ns;
+    stats->thread_ids[stats->timestamps_count] = (uintptr_t)sample->context_pthread;
+    stats->timestamps_count++;
 
     return true;
 }
@@ -537,6 +546,7 @@ pf2_session_dfree(void *sess)
         khint_t k;
         kh_foreach(session->sample_table, k) {
             free(kh_val(session->sample_table, k).timestamps);
+            free(kh_val(session->sample_table, k).thread_ids);
         }
         pf2_sample_table_destroy(session->sample_table);
     }

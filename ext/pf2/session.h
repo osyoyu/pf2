@@ -125,6 +125,8 @@ struct pf2_sample_stats {
     // Timestamps which this sample was observed. This array's length = # of samples.
     // TODO: Make timestamp collection optional?
     uint64_t *timestamps;
+    // Thread ids corresponding to each timestamp.
+    uintptr_t *thread_ids;
     // timestamps.length
     size_t timestamps_count;
     size_t timestamps_capacity;
