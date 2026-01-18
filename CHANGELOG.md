@@ -1,5 +1,16 @@
 ## [Unreleased]
 
+### Added
+
+- Pf2 should now have a dramatically lower memory footprint.
+  - Samples are now stored in a compact hashmap internally.
+  - See https://github.com/osyoyu/pf2/pull/85 for details.
+
+### Fixed
+
+- `pf2 serve` command now properly works. (Thanks @hanazuki)
+
+
 ## [0.12.0] - 2026-01-09
 
 ### Added
