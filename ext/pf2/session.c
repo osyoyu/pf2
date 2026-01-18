@@ -29,6 +29,7 @@ static void sigprof_handler(int sig, siginfo_t *info, void *ucontext);
 static void pf2_session_stop(struct pf2_session *session);
 static size_t intern_location(struct pf2_session *session, VALUE cme, int lineno);
 static size_t intern_stack(struct pf2_session *session, const size_t *frames, size_t depth);
+static size_t intern_native_stack(struct pf2_session *session, const uintptr_t *frames, size_t depth);
 static bool insert_sample(struct pf2_session *session, const struct pf2_sample *sample);
 
 VALUE
@@ -263,6 +264,26 @@ intern_stack(struct pf2_session *session, const size_t *frames, size_t depth)
     return kh_val(session->stack_table, k);
 }
 
+static size_t
+intern_native_stack(struct pf2_session *session, const uintptr_t *frames, size_t depth)
+{
+    struct pf2_native_stack_key skey = { .frames = frames, .depth = depth };
+    int absent;
+    khint_t k = pf2_native_stack_table_put(session->native_stack_table, skey, &absent);
+    if (absent) {
+        uintptr_t *copy = NULL;
+        if (depth > 0) {
+            copy = malloc(sizeof(uintptr_t) * depth);
+            if (copy == NULL) return (size_t)-1;
+            memcpy(copy, frames, sizeof(uintptr_t) * depth);
+        }
+        kh_key(session->native_stack_table, k).frames = copy;
+        kh_key(session->native_stack_table, k).depth = depth;
+        kh_val(session->native_stack_table, k) = kh_size(session->native_stack_table) - 1;
+    }
+    return kh_val(session->native_stack_table, k);
+}
+
 static bool
 insert_sample(struct pf2_session *session, const struct pf2_sample *sample)
 {
@@ -277,9 +298,16 @@ insert_sample(struct pf2_session *session, const struct pf2_sample *sample)
     size_t stack_id = intern_stack(session, frame_ids, (size_t)sample->depth);
     if (stack_id == (size_t)-1) { return false; }
 
+    size_t native_stack_id = intern_native_stack(session, sample->native_stack, sample->native_stack_depth);
+    if (native_stack_id == (size_t)-1) { return false; }
+
     // Increment the observation count for this stack_id
     int absent;
-    khint_t k = pf2_sample_table_put(session->sample_table, stack_id, &absent);
+    struct pf2_combined_stack_key ckey = {
+        .ruby_stack_id = stack_id,
+        .native_stack_id = native_stack_id
+    };
+    khint_t k = pf2_sample_table_put(session->sample_table, ckey, &absent);
     struct pf2_sample_stats *stats = &kh_val(session->sample_table, k);
     if (absent) {
         // This is the first time this stack was observed. Initialize stats.
@@ -412,7 +440,7 @@ pf2_session_alloc(VALUE self)
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
-    // location_table, stack_table, sample_table
+    // location_table, stack_table, native_stack_table, sample_table
     session->location_table = pf2_location_table_init();
     if (session->location_table == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate location table");
@@ -420,6 +448,10 @@ pf2_session_alloc(VALUE self)
     session->stack_table = pf2_stack_table_init();
     if (session->stack_table == NULL) {
         rb_raise(rb_eNoMemError, "Failed to allocate stack table");
+    }
+    session->native_stack_table = pf2_native_stack_table_init();
+    if (session->native_stack_table == NULL) {
+        rb_raise(rb_eNoMemError, "Failed to allocate native stack table");
     }
     session->sample_table = pf2_sample_table_init();
     if (session->sample_table == NULL) {
@@ -514,6 +546,13 @@ pf2_session_dfree(void *sess)
             free((void *)kh_key(session->stack_table, k).frames);
         }
         pf2_stack_table_destroy(session->stack_table);
+    }
+    if (session->native_stack_table) {
+        khint_t k;
+        kh_foreach(session->native_stack_table, k) {
+            free((void *)kh_key(session->native_stack_table, k).frames);
+        }
+        pf2_native_stack_table_destroy(session->native_stack_table);
     }
     if (session->location_table) {
         pf2_location_table_destroy(session->location_table);

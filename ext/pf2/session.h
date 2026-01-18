@@ -50,7 +50,7 @@ static inline int eq_location_key(struct pf2_location_key a, struct pf2_location
 
 // END location_table
 
-// BEGIN stack_table
+// BEGIN stack_table (Ruby stack)
 
 struct pf2_stack_key {
     const size_t *frames; // pointer to an immutable array of location_ids
@@ -75,6 +75,50 @@ static inline int eq_stack_key(struct pf2_stack_key a, struct pf2_stack_key b)
 
 // END stack_table
 
+// BEGIN native_stack_table (raw PCs)
+
+struct pf2_native_stack_key {
+    const uintptr_t *frames; // pointer to an immutable array of PCs
+    size_t depth;
+};
+static inline khint_t hash_native_stack_key(struct pf2_native_stack_key key)
+{
+    khint_t h = hash_size_t(key.depth);
+    for (size_t i = 0; i < key.depth; i++) {
+        h ^= kh_hash_uint64((khint64_t)key.frames[i]) + 0x9e3779b9U + (h << 6) + (h >> 2);
+    }
+    return h;
+}
+static inline int eq_native_stack_key(struct pf2_native_stack_key a, struct pf2_native_stack_key b)
+{
+    if (a.depth != b.depth) return 0;
+    for (size_t i = 0; i < a.depth; i++) {
+        if (a.frames[i] != b.frames[i]) return 0;
+    }
+    return 1;
+}
+
+// END native_stack_table
+
+// BEGIN combined_sample_table
+
+struct pf2_combined_stack_key {
+    size_t ruby_stack_id;
+    size_t native_stack_id;
+};
+static inline khint_t hash_combined_stack_key(struct pf2_combined_stack_key key)
+{
+    khint_t h = hash_size_t(key.ruby_stack_id);
+    h ^= hash_size_t(key.native_stack_id) + 0x9e3779b9U + (h << 6) + (h >> 2);
+    return h;
+}
+static inline int eq_combined_stack_key(struct pf2_combined_stack_key a, struct pf2_combined_stack_key b)
+{
+    return a.ruby_stack_id == b.ruby_stack_id && a.native_stack_id == b.native_stack_id;
+}
+
+// END combined_sample_table
+
 struct pf2_sample_stats {
     // The number of times this sample was observed.
     size_t count;
@@ -92,8 +136,10 @@ struct pf2_sample_stats {
 KHASHL_MAP_INIT(static, pf2_location_table, pf2_location_table, struct pf2_location_key, size_t, hash_location_key, eq_location_key)
 // stack table: key = array of location_ids, val = stack_id
 KHASHL_MAP_INIT(static, pf2_stack_table, pf2_stack_table, struct pf2_stack_key, size_t, hash_stack_key, eq_stack_key)
-// sample table: key = stack_id, val = aggregated counts/timestamps
-KHASHL_MAP_INIT(static, pf2_sample_table, pf2_sample_table, size_t, struct pf2_sample_stats, hash_size_t, eq_size_t)
+// native stack table: key = array of PCs, val = native_stack_id
+KHASHL_MAP_INIT(static, pf2_native_stack_table, pf2_native_stack_table, struct pf2_native_stack_key, size_t, hash_native_stack_key, eq_native_stack_key)
+// sample table: key = (ruby_stack_id, native_stack_id), val = aggregated counts/timestamps
+KHASHL_MAP_INIT(static, pf2_sample_table, pf2_sample_table, struct pf2_combined_stack_key, struct pf2_sample_stats, hash_combined_stack_key, eq_combined_stack_key)
 #pragma GCC diagnostic pop
 
 struct pf2_sess_sample {
@@ -128,6 +174,7 @@ struct pf2_session {
 
     pf2_location_table *location_table;
     pf2_stack_table *stack_table;
+    pf2_native_stack_table *native_stack_table;
     pf2_sample_table *sample_table;
 
     struct timespec start_time_realtime;
