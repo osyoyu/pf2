@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+## [0.13.0] - 2026-01-18
+
 ### Added
 
 - Pf2 should now have a dramatically lower memory footprint.
