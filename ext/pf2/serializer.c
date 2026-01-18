@@ -85,47 +85,120 @@ pf2_ser_prepare(struct pf2_ser *serializer, struct pf2_session *session) {
     serializer->dropped_sample_count =
         atomic_load_explicit(&session->dropped_sample_count, memory_order_relaxed);
 
-    // Process samples
-    for (size_t i = 0; i < session->samples_index; i++) {
-        struct pf2_sample *sample = &session->samples[i];
-        ensure_samples_capacity(serializer);
-
-        struct pf2_ser_sample *ser_sample = &serializer->samples[serializer->samples_count++];
-        ser_sample->ruby_thread_id = (uintptr_t)sample->context_pthread;
-        ser_sample->elapsed_ns = sample->timestamp_ns - serializer->start_timestamp_ns;
-
-        // Copy and process Ruby stack frames
-        ser_sample->stack = malloc(sizeof(size_t) * sample->depth);
-        ser_sample->stack_count = sample->depth;
-        for (int j = 0; j < sample->depth; j++) {
-            VALUE frame = sample->cmes[j];
-            int32_t lineno = sample->linenos[j];
-
-            struct pf2_ser_function func = extract_function_from_ruby_frame(frame);
-            size_t function_index = function_index_for(serializer, &func);
-            size_t location_index = location_index_for(serializer, function_index, lineno);
-
-            ser_sample->stack[j] = location_index;
-        }
-
-        // Copy and process native stack frames, if any
-        if (sample->native_stack_depth > 0) {
-            ser_sample->native_stack = malloc(sizeof(size_t) * sample->native_stack_depth);
-            ser_sample->native_stack_count = sample->native_stack_depth;
-
-            for (size_t j = 0; j < sample->native_stack_depth; j++) {
-                struct pf2_ser_function func = extract_function_from_native_pc(sample->native_stack[j]);
-                size_t function_index = function_index_for(serializer, &func);
-                size_t location_index = location_index_for(serializer, function_index, 0);
-
-                ser_sample->native_stack[j] = location_index;
-            }
-        } else {
-            ser_sample->native_stack = NULL;
-            ser_sample->native_stack_count = 0;
-        }
-
+    // ---------------------------------------------------------------------
+    // Build locations/functions from the session's interning tables
+    // ---------------------------------------------------------------------
+    size_t location_table_size = kh_size(session->location_table);
+    if (location_table_size > serializer->locations_capacity) {
+        serializer->locations_capacity = location_table_size;
+        serializer->locations = realloc(
+            serializer->locations,
+            serializer->locations_capacity * sizeof(struct pf2_ser_location)
+        );
     }
+
+    khint_t k;
+    kh_foreach(session->location_table, k) {
+        size_t location_id = kh_val(session->location_table, k);
+        VALUE cme = kh_key(session->location_table, k).cme;
+        int lineno = kh_key(session->location_table, k).lineno;
+
+        struct pf2_ser_function func = extract_function_from_ruby_frame(cme);
+        size_t function_index = function_index_for(serializer, &func);
+
+        // location ids are assigned sequentially in intern_location, so we can
+        // place them directly by id.
+        serializer->locations[location_id].function_index = function_index;
+        serializer->locations[location_id].lineno = lineno;
+        serializer->locations[location_id].address = 0;
+    }
+    serializer->locations_count = location_table_size;
+
+    // ---------------------------------------------------------------------
+    // Precompute stack/native stack lookups by id for fast access
+    // ---------------------------------------------------------------------
+    size_t ruby_stack_count = kh_size(session->stack_table);
+    struct pf2_stack_key *ruby_stacks = NULL;
+    if (ruby_stack_count > 0) {
+        ruby_stacks = malloc(sizeof(struct pf2_stack_key) * ruby_stack_count);
+        kh_foreach(session->stack_table, k) {
+            size_t stack_id = kh_val(session->stack_table, k);
+            ruby_stacks[stack_id] = kh_key(session->stack_table, k);
+        }
+    }
+
+    size_t native_stack_count = kh_size(session->native_stack_table);
+    struct pf2_native_stack_key *native_stacks = NULL;
+    if (native_stack_count > 0) {
+        native_stacks = malloc(sizeof(struct pf2_native_stack_key) * native_stack_count);
+        kh_foreach(session->native_stack_table, k) {
+            size_t stack_id = kh_val(session->native_stack_table, k);
+            native_stacks[stack_id] = kh_key(session->native_stack_table, k);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Process aggregated sample_table entries into serializer samples
+    // ---------------------------------------------------------------------
+    size_t total_samples = 0;
+    kh_foreach(session->sample_table, k) {
+        total_samples += kh_val(session->sample_table, k).timestamps_count;
+    }
+    if (total_samples > serializer->samples_capacity) {
+        serializer->samples_capacity = total_samples;
+        serializer->samples = realloc(
+            serializer->samples,
+            serializer->samples_capacity * sizeof(struct pf2_ser_sample)
+        );
+    }
+
+    kh_foreach(session->sample_table, k) {
+        struct pf2_combined_stack_key ckey = kh_key(session->sample_table, k);
+        struct pf2_sample_stats *stats = &kh_val(session->sample_table, k);
+
+        const struct pf2_stack_key *ruby_stack = ruby_stacks ? &ruby_stacks[ckey.ruby_stack_id] : NULL;
+        const struct pf2_native_stack_key *native_stack = native_stacks ? &native_stacks[ckey.native_stack_id] : NULL;
+
+        for (size_t t = 0; t < stats->timestamps_count; t++) {
+            ensure_samples_capacity(serializer);
+            struct pf2_ser_sample *ser_sample = &serializer->samples[serializer->samples_count++];
+
+            ser_sample->ruby_thread_id = stats->thread_ids ? stats->thread_ids[t] : 0;
+            ser_sample->elapsed_ns = stats->timestamps[t] - serializer->start_timestamp_ns;
+
+            // Ruby stack
+            if (ruby_stack && ruby_stack->depth > 0) {
+                ser_sample->stack = malloc(sizeof(size_t) * ruby_stack->depth);
+                ser_sample->stack_count = ruby_stack->depth;
+                for (size_t j = 0; j < ruby_stack->depth; j++) {
+                    // location ids map directly to indices in serializer->locations
+                    ser_sample->stack[j] = ruby_stack->frames[j];
+                }
+            } else {
+                ser_sample->stack = NULL;
+                ser_sample->stack_count = 0;
+            }
+
+            // Native stack
+            if (native_stack && native_stack->depth > 0) {
+                ser_sample->native_stack = malloc(sizeof(size_t) * native_stack->depth);
+                ser_sample->native_stack_count = native_stack->depth;
+
+                for (size_t j = 0; j < native_stack->depth; j++) {
+                    struct pf2_ser_function func = extract_function_from_native_pc(native_stack->frames[j]);
+                    size_t function_index = function_index_for(serializer, &func);
+                    size_t location_index = location_index_for(serializer, function_index, 0);
+                    ser_sample->native_stack[j] = location_index;
+                }
+            } else {
+                ser_sample->native_stack = NULL;
+                ser_sample->native_stack_count = 0;
+            }
+        }
+    }
+
+    free(ruby_stacks);
+    free(native_stacks);
 }
 
 VALUE
@@ -164,7 +237,7 @@ pf2_ser_to_ruby_hash(struct pf2_ser *serializer) {
         rb_hash_aset(
             sample_hash,
             ID2SYM(rb_intern("ruby_thread_id")),
-            sample->ruby_thread_id ? ULL2NUM(sample->ruby_thread_id) : Qnil
+            ULL2NUM(sample->ruby_thread_id)
         );
         rb_hash_aset(sample_hash, ID2SYM(rb_intern("elapsed_ns")), ULL2NUM(sample->elapsed_ns));
 
