@@ -170,10 +170,6 @@ struct pf2_session {
     atomic_bool is_marking; // Whether garbage collection is in progress
     pthread_t *collector_thread;
 
-    struct pf2_sample *samples; // Dynamic array of samples
-    size_t samples_index;
-    size_t samples_capacity;    // Current capacity of the samples array
-
     pf2_location_table *location_table;
     pf2_stack_table *stack_table;
     pf2_native_stack_table *native_stack_table;

@@ -441,14 +441,6 @@ pf2_session_alloc(VALUE self)
         rb_raise(rb_eNoMemError, "Failed to allocate memory");
     }
 
-    // samples, samples_index, samples_capacity
-    session->samples_index = 0;
-    session->samples_capacity = 500; // 10 seconds worth of samples at 50 Hz
-    session->samples = malloc(sizeof(struct pf2_sample) * session->samples_capacity);
-    if (session->samples == NULL) {
-        rb_raise(rb_eNoMemError, "Failed to allocate memory");
-    }
-
     // location_table, stack_table, native_stack_table, sample_table
     session->location_table = pf2_location_table_init();
     if (session->location_table == NULL) {
@@ -506,14 +498,6 @@ pf2_session_dmark(void *sess)
         head = (head + 1) % rbuf->size;
     }
 
-    // Iterate over all samples in the samples array and mark them
-    for (size_t i = 0; i < session->samples_index; i++) {
-        sample = &session->samples[i];
-        for (int i = 0; i < sample->depth; i++) {
-            rb_gc_mark(sample->cmes[i]);
-        }
-    }
-
     // Mark Ruby VALUEs stored in location_table keys
     if (session->location_table) {
         khint_t k;
@@ -540,7 +524,6 @@ pf2_session_dfree(void *sess)
 
     pf2_configuration_free(session->configuration);
     pf2_ringbuffer_free(session->rbuf);
-    free(session->samples);
 
     if (session->sample_table) {
         khint_t k;
@@ -578,7 +561,6 @@ pf2_session_dsize(const void *sess)
     const struct pf2_session *session = sess;
     return (
         sizeof(struct pf2_session)
-        + sizeof(struct pf2_sample) * session->samples_capacity
         + sizeof(struct pf2_sample) * session->rbuf->size
     );
 }
