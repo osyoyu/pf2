@@ -252,6 +252,7 @@ intern_stack(struct pf2_session *session, const size_t *frames, size_t depth)
         size_t *copy = NULL;
         if (depth > 0) {
             copy = malloc(sizeof(size_t) * depth);
+            // TODO: if allocation fails, remove stack_table entry to avoid dangling stack-local key.
             if (copy == NULL) return (size_t)-1;
             memcpy(copy, frames, sizeof(size_t) * depth);
         }
