@@ -195,6 +195,12 @@ sigprof_handler(int sig, siginfo_t *info, void *ucontext)
 
     struct pf2_session *session = global_current_session;
 
+    // Pending signals may be delivered even after the session is stopped.
+    // Simply ignore those.
+    if (session == NULL || session->is_running == false) {
+        return;
+    }
+
     // If garbage collection is in progress, don't collect samples.
     if (atomic_load_explicit(&session->is_marking, memory_order_acquire)) {
         PF2_DEBUG_LOG("Dropping sample: Garbage collection is in progress\n");
@@ -388,8 +394,8 @@ pf2_session_stop(struct pf2_session *session)
     if (setitimer(which_timer, &zero_timer, NULL) == -1) {
         rb_raise(rb_eRuntimeError, "Failed to stop timer");
     }
-    global_current_session = NULL;
 #endif
+    global_current_session = NULL;
 
     // Terminate the collector thread
     session->is_running = false;
