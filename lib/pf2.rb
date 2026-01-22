@@ -6,11 +6,16 @@ require_relative 'pf2/version'
 module Pf2
   class Error < StandardError; end
 
+  # Start a profiling session.
+  #
+  # interval_ms - Sampling interval in milliseconds (default: 9)
+  # time_mode   - :cpu or :wall (default: :cpu)
   def self.start(...)
     @@session = Session.new(...)
     @@session.start
   end
 
+  # Stop the current profiling session and return the profile data.
   def self.stop
     @@session.stop
   end
