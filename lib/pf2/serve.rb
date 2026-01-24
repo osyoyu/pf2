@@ -29,7 +29,7 @@ module Pf2
         profile = Pf2.stop
         res.header['Content-Type'] = 'application/json'
         res.header['Access-Control-Allow-Origin'] = '*'
-        res.body = JSON.generate(Pf2::Reporter::FirefoxProfilerSer2.new(profile).emit)
+        res.body = Pf2::Reporter::FirefoxProfilerSer2.new(profile).emit
         Pf2.start
       end
 
