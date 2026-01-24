@@ -60,7 +60,6 @@ module Pf2
 
       profile = Marshal.load(File.read(argv[0]))
       report = Pf2::Reporter::FirefoxProfilerSer2.new(profile).emit
-      report = JSON.generate(report)
 
       if options[:output_file]
         File.write(options[:output_file], report)

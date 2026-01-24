@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
+require 'json'
+require 'stringio'
+require 'tempfile'
+require 'tmpdir'
 
 require 'pf2'
 
@@ -50,5 +54,47 @@ class Pf2Test < Minitest::Test
     end
 
     assert_nil Pf2.class_variable_get(:@@session)
+  end
+
+  def test_profile_writes_firefox_report_to_io
+    Tempfile.create do |file|
+      file.close # Pf2.profile will open by path
+      Pf2.profile(out: file.path, format: :firefox) { 1 + 1 }
+      parsed = JSON.parse(File.read(file.path))
+
+      assert_kind_of Hash, parsed
+      assert parsed.key?('threads')
+    end
+  end
+
+  def test_profile_writes_firefox_report_to_stringio
+    io = StringIO.new(+'', 'r+')
+    Pf2.profile(out: io, format: :firefox) { 1 + 1 }
+    io.rewind
+    parsed = JSON.parse(io.read)
+
+    assert_kind_of Hash, parsed
+    assert parsed.key?('threads')
+  end
+
+  def test_profile_writes_pf2prof_report_to_path
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'profile.pf2prof')
+      profile = Pf2.profile(out: path, format: :pf2prof) { 1 + 1 }
+      written = File.binread(path)
+      assert_equal profile, Marshal.load(written)
+    end
+  end
+
+  def test_profile_rejects_non_io_out
+    assert_raises(ArgumentError, "'out' must be an IO-like object") do
+      Pf2.profile(out: 42) { 1 + 1 }
+    end
+  end
+
+  def test_profile_raises_error_for_unknown_format
+    assert_raises(ArgumentError, "Unknown format: :invalid") do
+      Pf2.profile(format: :invalid) { 1 + 1 }
+    end
   end
 end

@@ -7,19 +7,19 @@ require 'pf2/reporter'
 
 class FirefoxProfilerSer2Test < Minitest::Test
   def test_empty
-    report = Pf2::Reporter::FirefoxProfilerSer2.new({
+    report = JSON.parse(Pf2::Reporter::FirefoxProfilerSer2.new({
       start_timestamp_ns: 1737730800000000,
       duration_ns: 15000000000,
       samples: [],
       locations: [],
       functions: [],
-    }).emit
+    }).emit, symbolize_names: true)
 
     assert_equal([], report[:threads])
   end
 
   def test_simple
-    report = Pf2::Reporter::FirefoxProfilerSer2.new({
+    report = JSON.parse(Pf2::Reporter::FirefoxProfilerSer2.new({
       start_timestamp_ns: 1737730800000000,
       duration_ns: 15000000000,
       samples: [
@@ -40,7 +40,7 @@ class FirefoxProfilerSer2Test < Minitest::Test
         { implementation: :ruby, name: 'qux', filename: 'main.rb', start_lineno: 40, start_address: nil },
         { implementation: :ruby, name: 'quux', filename: 'main.rb', start_lineno: 50, start_address: nil },
       ],
-    }).emit
+    }).emit, symbolize_names: true)
 
     assert_equal(1, report[:threads].length)
     assert_equal(5, report[:threads][0][:stackTable][:length])

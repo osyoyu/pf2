@@ -61,7 +61,7 @@ module Pf2
           counters: [],
           threads: thread_reports,
         }
-        FirefoxProfilerSer2.deep_camelize_keys(report)
+        JSON.generate(FirefoxProfilerSer2.deep_camelize_keys(report))
       end
 
       class ThreadReport
