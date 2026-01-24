@@ -2,5 +2,8 @@ title: Pf2
 main_page: README.md
 encoding: UTF-8
 
+exclude:
+  - ext/patches
+
 autolink_excluded_words:
   - Pf2

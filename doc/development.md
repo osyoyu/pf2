@@ -15,3 +15,9 @@ Releasing
 - Run `bundle install` to update Gemfile.lock
 - Commit changes
 - Run `bundle exec rake release`
+
+Hidden options for testing
+--------
+
+- Pf2.start
+  - _test_no_install_timer: When true, no timer is installed. Manually send a SIGPROF to trigger sampling.
