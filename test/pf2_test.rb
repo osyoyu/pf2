@@ -5,6 +5,7 @@ require 'json'
 require 'stringio'
 require 'tempfile'
 require 'tmpdir'
+require 'zlib'
 
 require 'pf2'
 
@@ -83,6 +84,16 @@ class Pf2Test < Minitest::Test
       profile = Pf2.profile(out: path, format: :pf2prof) { 1 + 1 }
       written = File.binread(path)
       assert_equal profile, Marshal.load(written)
+    end
+  end
+
+  def test_profile_writes_pprof_report_to_path
+    Dir.mktmpdir do |dir|
+      path = File.join(dir, 'profile.pprof')
+      Pf2.profile(out: path, format: :pprof) { 1 + 1 }
+      written = File.binread(path)
+      # gzip magic bytes 1F 8B
+      assert_equal "\x1F\x8B".b, written.byteslice(0, 2)
     end
   end
 
