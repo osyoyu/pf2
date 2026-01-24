@@ -6,7 +6,6 @@ A experimental sampling-based profiler for Ruby 3.3+.
 - GitHub: https://github.com/osyoyu/pf2
 - Documentation: https://osyoyu.github.io/pf2/
 
-
 Notable Capabilites
 --------
 
@@ -36,7 +35,29 @@ Pf2 can be installed as a standalone CLI tool as well.
 gem install pf2
 ```
 
-### Quickstart
+### Profiling
+
+Surround and run your code with `Pf2.profile { }`.
+
+```ruby
+profile = Pf2.profile(out: 'profile.json') do
+  your_code_here() # will be profiled
+  Thread.new { threaded_code() } # will also be profiled
+end
+```
+
+Then drop 'profile.json' into https://profiler.firefox.com/ for nice visualization.
+
+Options for `Pf2.profile`:
+
+| Option      | Type              | Description                                    |
+| ----------- | ----------------- | ---------------------------------------------- |
+| interval_ms | Integer           | Sampling interval in milliseconds (default: 9) |
+| time_mode   | `:cpu` or `:wall` | Sampling timer mode (default: `:cpu`)          |
+| out         | String or IO-like | Location to write collected profile data       |
+| format      | `:firefox` or `:pf2prof` | Profile format to be saved              |
+
+### Direct visualization using 'pf2 serve'
 
 Run your Ruby program through `pf2 serve`.
 Wait a while until Pf2 collects profiles (or until the target program exits), then open the displayed link for visualization.
@@ -49,39 +70,32 @@ $ pf2 serve -- ruby target.rb
 I'm the target program!
 ```
 
-### Profiling
+No profile data is sent to Mozilla's servers. https://profiler.firefox.com operates inside your browser, unless you explicitly upload your profile for sharing.
 
-Pf2 will collect samples every 10 ms of wall time by default.
+### More precise control
+
+More precise control may be acheived by using `Pf2.start` and `Pf2.stop`.
 
 ```ruby
-# Threads in `threads` will be tracked
-Pf2.start(threads: [Thread.current])
+Pf2.start
 
 your_code_here
 
-# Stop profiling and save the profile for visualization
+# Stop profiling
 profile = Pf2.stop
-File.write("my_program.pf2profile", profile)
+
+# Save file for later visualization using 'pf2 report'
+File.binwrite("my_program.pf2prof", Marshal.dump(profile))
 ```
 
-Alternatively, you may provide a code block to profile.
-
-```ruby
-profile = Pf2.profile do
-  your_code_here() # will be profiled
-  Thread.new { threaded_code() } # will also be profiled
-end
-
-# Save the profile for visualization
-File.write("my_program.pf2profile", profile)
-```
+`Pf2.start` accepts `interval_ms` and `time_mode`.
 
 ### Reporting / Visualization
 
 Profiles can be visualized using the [Firefox Profiler](https://profiler.firefox.com/).
 
 ```console
-$ pf2 report -o report.json my_program.pf2profile
+$ pf2 report -o report.json my_program.pf2prof
 ```
 
 Alternatively, `pf2 annotate` can be used to display hit counts side-by-side with source code.
@@ -90,22 +104,10 @@ Alternatively, `pf2 annotate` can be used to display hit counts side-by-side wit
 $ pf2 annotate my_program.pf2prof
 ```
 
-### Configuration
-
-Pf2 accepts the following configuration keys:
-
-```rb
-Pf2.start(
-  interval_ms: 9,        # Integer: The sampling interval in milliseconds (default: 9)
-  time_mode: :cpu,       # `:cpu` or `:wall`: The sampling timer's mode
-)
-```
-
-
 Overhead
 --------
 
-While Pf2 aims to be non-disturbulent as much as possible, a small overhead still is incured.
+While Pf2 aims to be non-disturbulent as much as possible, a small overhead is still incured.
 
 (TBD)
 
@@ -150,18 +152,10 @@ Another scheduler is the `TimerThreadScheduler`, which maintains a time-keeping 
 
 This scheduler is wall-time only, and does not support CPU-time based profiling.
 
-
-Wishlist
---------
-
-- [Flame Scopes](https://www.brendangregg.com/flamescope.html)
-- more
-
 Development
 --------
 
 See [doc/development.md](doc/development.md).
-
 
 License
 --------
