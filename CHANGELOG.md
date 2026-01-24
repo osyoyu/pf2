@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+### Added
+
+- `Pf2.profile` can now directly write a Firefox Profiler-compatible profile into a file or an IO-ish object. Check out `Pf2.profile`'s `out:` and `format:` option.
+
+### Changed
+
+- `Pf2::Reporter::FirefoxProfilerSer2` now emits a JSON string, not a Hash. Parse the JSON to obtain the original representaion.
+
+### Fixed
+
+- Fixed a crash when a delayed SIGPROF is received after `Pf2.stop` is called.
+
+
 ## [0.13.0] - 2026-01-18
 
 ### Added
