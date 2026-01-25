@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+
+## [0.14.0] - 2026-01-25
+
 ### Added
 
 - `Pf2.profile` can now directly write a Firefox Profiler-compatible profile into a file or an IO-ish object. Check out `Pf2.profile`'s `out:` and `format:` option.
