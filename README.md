@@ -55,7 +55,7 @@ Options for `Pf2.profile`:
 | interval_ms | Integer           | Sampling interval in milliseconds (default: 9) |
 | time_mode   | `:cpu` or `:wall` | Sampling timer mode (default: `:cpu`)          |
 | out         | String or IO-like | Location to write collected profile data       |
-| format      | `:firefox` or `:pf2prof` | Profile format to be saved              |
+| format      | `:firefox` or `:pprof` or `:pf2prof` | Profile format to be saved  |
 
 ### Direct visualization using 'pf2 serve'
 
