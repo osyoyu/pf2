@@ -6,7 +6,7 @@ require_relative 'pf2/version'
 module Pf2
   class Error < StandardError; end
 
-  KNOWN_FORMATS = [:pf2prof, :firefox] # :nodoc:
+  KNOWN_FORMATS = [:pf2prof, :firefox, :pprof] # :nodoc:
   private_constant :KNOWN_FORMATS
 
   # Start a profiling session.
@@ -34,8 +34,9 @@ module Pf2
   #                 - String: file path to write the profile data
   #                 - IO-like object: an object responding to #write
   # format      - Output format. Possible values are:
-  #                 - :firefox (default): JSON for profiler.firefox.com
   #                 - :pf2prof: Raw profile dump loadable by 'pf2 report'
+  #                 - :firefox (default): JSON for profiler.firefox.com
+  #                 - :pprof: .pb.gz compatible with Golang's pprof tool
   #
   # Example:
   #
@@ -59,12 +60,16 @@ module Pf2
       is_path_passed = out.is_a?(String)
       io = is_path_passed ? File.open(out, "wb") : out
       case format
+      in :pf2prof
+        io.write(Marshal.dump(result))
       in :firefox
         require 'pf2/reporter'
         reporter = Reporter::FirefoxProfilerSer2.new(result)
         io.write(reporter.emit)
-      in :pf2prof
-        io.write(Marshal.dump(result))
+      in :pprof
+        require 'pf2/reporter'
+        reporter = Reporter::Pprof.new(result)
+        io.write(reporter.emit)
       end
       io.close if is_path_passed
     end
