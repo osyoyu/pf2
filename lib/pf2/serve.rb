@@ -26,11 +26,12 @@ module Pf2
 
       server = WEBrick::HTTPServer.new(CONFIG)
       server.mount_proc('/profile') do |req, res|
+        config = Pf2.class_variable_get(:@@session).configuration
         profile = Pf2.stop
         res.header['Content-Type'] = 'application/json'
         res.header['Access-Control-Allow-Origin'] = '*'
         res.body = Pf2::Reporter::FirefoxProfilerSer2.new(profile).emit
-        Pf2.start
+        Pf2.start(**config)
       end
 
       Pf2.start
