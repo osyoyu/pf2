@@ -20,6 +20,8 @@
 #include "session.h"
 #include "serializer.h"
 
+// Guard to prevent multiple concurrent sessions
+static atomic_bool global_session_running = false;
 // Pointer to current active session, for access from signal handlers
 static struct pf2_session *global_current_session = NULL;
 
@@ -60,8 +62,16 @@ rb_pf2_session_start(VALUE self)
     struct pf2_session *session;
     TypedData_Get_Struct(self, struct pf2_session, &pf2_session_type, session);
 
-    // Store pointer to current session for access from signal handlers
-    global_current_session = session;
+    // Do not allow starting the same session twice
+    if (session->is_running) {
+        rb_raise(rb_eRuntimeError, "Profiling is already started");
+    }
+
+    // Prevent multiple sessions from running simultaneously
+    bool expected = false;
+    if (!atomic_compare_exchange_strong_explicit(&global_session_running, &expected, true, memory_order_acquire, memory_order_relaxed)) {
+        rb_raise(rb_eRuntimeError, "Profiling is already started");
+    }
 
     session->is_running = true;
 
@@ -396,6 +406,7 @@ pf2_session_stop(struct pf2_session *session)
     }
 #endif
     global_current_session = NULL;
+    atomic_store_explicit(&global_session_running, false, memory_order_release);
 
     // Terminate the collector thread
     session->is_running = false;
