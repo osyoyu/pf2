@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixed
+
+- `pf2 --help` now lists the `annotate` command, and `pf2 annotate --help` names `annotate` instead of `report`.
+
 
 ## [0.14.0] - 2026-01-25
 

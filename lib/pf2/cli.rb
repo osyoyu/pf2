@@ -32,6 +32,7 @@ module Pf2
 
         Commands:
           report    Generate a report from a profile
+          annotate  Show sample counts beside the source code of a profile
           serve     Start an HTTP server alongside a target process
           version   Show version information
         __EOS__
@@ -47,7 +48,7 @@ module Pf2
     def subcommand_report(argv)
       options = {}
       option_parser = OptionParser.new do |opts|
-        opts.banner = "Usage: pf2 report [options] COMMAND"
+        opts.banner = "Usage: pf2 report [options] PROFILE"
         opts.on('-h', '--help', 'Prints this help') do
           puts opts
           return 0
@@ -73,7 +74,7 @@ module Pf2
     def subcommand_annotate(argv)
       options = {}
       option_parser = OptionParser.new do |opts|
-        opts.banner = "Usage: pf2 report [options] COMMAND"
+        opts.banner = "Usage: pf2 annotate [options] PROFILE"
         opts.on('-h', '--help', 'Prints this help') do
           puts opts
           return 0
